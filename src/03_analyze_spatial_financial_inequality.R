@@ -1,5 +1,5 @@
-source(file.path("src", "pipeline", "00_config.R"))
-source(file.path("src", "pipeline", "utils.R"))
+source(file.path("src", "00_config.R"))
+source(file.path("src", "utils.R"))
 
 message("[03] Producing spatial-financial inequality outputs...")
 
