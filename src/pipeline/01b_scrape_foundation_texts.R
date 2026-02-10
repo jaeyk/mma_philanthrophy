@@ -9,6 +9,12 @@ if (!requireNamespace("httr2", quietly = TRUE) ||
   stop("Please install required packages: httr2, rvest, xml2")
 }
 
+domain_reco <- tibble(domain = character(), recommendation = character())
+if (file.exists(file_web_failure_domain_recommendations)) {
+  domain_reco <- read_csv(file_web_failure_domain_recommendations, show_col_types = FALSE) %>%
+    transmute(domain = str_to_lower(domain), recommendation = str_to_lower(recommendation))
+}
+
 fdn <- read_csv(file_foundation_universe, show_col_types = FALSE) %>%
   filter(url_quality_keep, !is.na(candidate_url), candidate_url != "") %>%
   mutate(
@@ -94,6 +100,12 @@ collect_candidate_links <- function(seed_url, domain, html_raw = NULL) {
   unique(base_urls)
 }
 
+order_links_by_protocol <- function(links, prefer_https = FALSE) {
+  if (!prefer_https) return(links)
+  https_idx <- str_starts(str_to_lower(links), "https://")
+  c(links[https_idx], links[!https_idx])
+}
+
 is_root_url <- function(u) {
   u2 <- str_replace(u, "^https?://", "")
   slash_pos <- regexpr("/", u2, fixed = TRUE)[1]
@@ -164,11 +176,40 @@ for (i in seq_len(nrow(fdn))) {
 
   seed_pool <- seed_pool[seq_len(min(length(seed_pool), 3))]
   links <- character(0)
+  doms <- character(0)
   for (s in seed_pool) {
     d <- extract_domain(s)
+    if (!is.na(d) && d != "") doms <- c(doms, d)
     links <- c(links, collect_candidate_links(s, d))
   }
+  doms <- unique(str_to_lower(doms))
+  reco_i <- domain_reco %>% filter(domain %in% doms)
+  should_skip_domain <- any(reco_i$recommendation == "skip_domain")
+  prefer_https <- any(reco_i$recommendation == "prefer_https")
+
+  if (should_skip_domain) {
+    if (SCRAPER_VERBOSE == 1) {
+      message("  -> skipped entire domain by diagnostics recommendation (skip_domain)")
+    }
+    records[[length(records) + 1]] <- tibble(
+      ein = ein_i,
+      source_url = seed_i,
+      final_url = seed_i,
+      status_code = NA_integer_,
+      title = "",
+      text_clean = "",
+      scraped_ok = FALSE,
+      error_type = "diagnostic_skip_domain",
+      error_message = "Domain marked skip_domain from failure diagnostics",
+      attempts = 0L,
+      scraped_at = as.character(Sys.time())
+    )
+    utils::setTxtProgressBar(pb, i)
+    next
+  }
+
   links <- unique(links)
+  links <- order_links_by_protocol(links, prefer_https = prefer_https)
   links <- links[seq_len(min(length(links), MAX_PAGES_PER_SITE))]
   domain_unreachable <- list()
   domain_reachability_checked <- list()

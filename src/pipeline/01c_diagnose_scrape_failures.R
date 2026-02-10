@@ -102,5 +102,22 @@ summary_tbl <- diagnosed %>%
   )
 
 write_csv(summary_tbl, file.path(path_final, "foundation_web_failure_diagnostic_summary.csv"))
-message("[01c] Done. Wrote: ", file_web_failure_diagnostic_sample)
 
+# Domain-level recommendations for future scraper runs.
+domain_reco <- diagnosed %>%
+  group_by(domain) %>%
+  summarize(
+    any_success = any(any_success),
+    likely_https_only = any(likely_https_only),
+    likely_dns_or_dead = any(likely_dns_or_dead),
+    recommendation = case_when(
+      likely_dns_or_dead ~ "skip_domain",
+      likely_https_only ~ "prefer_https",
+      any_success ~ "normal",
+      TRUE ~ "normal"
+    ),
+    .groups = "drop"
+  )
+
+write_csv(domain_reco, file_web_failure_domain_recommendations)
+message("[01c] Done. Wrote: ", file_web_failure_diagnostic_sample)

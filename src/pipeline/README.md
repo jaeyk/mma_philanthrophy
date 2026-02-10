@@ -17,6 +17,9 @@ This pipeline builds a foundation-level analytic dataset and outputs tables/figu
 3. `01c_diagnose_scrape_failures.R`
 - Draws a random sample of failed domains and probes HTTP/HTTPS variants.
 - Produces diagnostics for improving scraper URL strategy.
+- Writes domain-level recommendations consumed by `01b` on future runs:
+  - `skip_domain`
+  - `prefer_https`
 
 4. `02_classify_focus.R`
 - Adds weakly supervised issue/geo/demographic labels from available metadata + scraped web text.
@@ -57,6 +60,7 @@ Rscript src/pipeline/run_pipeline.R
 - `processed_data/intermediate/foundation_web_texts.csv.gz`
 - `processed_data/final/foundation_web_text_failures.csv`
 - `processed_data/final/foundation_web_failure_diagnostic_sample.csv`
+- `processed_data/final/foundation_web_failure_domain_recommendations.csv`
 - `processed_data/intermediate/foundation_focus_classified.csv.gz`
 - `processed_data/intermediate/foundation_construct_scores.csv.gz`
 - `processed_data/intermediate/foundation_taie_scores.csv.gz`
