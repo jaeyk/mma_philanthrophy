@@ -24,7 +24,12 @@ fdn <- read_csv(file_foundation_universe, show_col_types = FALSE) %>%
   ) %>%
   distinct(ein, .keep_all = TRUE)
 
-MAX_ORGS <- as.integer(Sys.getenv("MAX_ORGS", unset = "5000"))
+max_orgs_raw <- str_trim(Sys.getenv("MAX_ORGS", unset = "ALL"))
+MAX_ORGS <- if (max_orgs_raw == "" || str_to_upper(max_orgs_raw) == "ALL") {
+  Inf
+} else {
+  suppressWarnings(as.integer(max_orgs_raw))
+}
 MAX_PAGES_PER_SITE <- as.integer(Sys.getenv("MAX_PAGES_PER_SITE", unset = "4"))
 REQUEST_TIMEOUT <- as.integer(Sys.getenv("REQUEST_TIMEOUT_SECONDS", unset = "20"))
 CRAWL_DELAY <- as.numeric(Sys.getenv("CRAWL_DELAY_SECONDS", unset = "0.4"))
@@ -33,7 +38,7 @@ SCRAPER_VERBOSE <- as.integer(Sys.getenv("SCRAPER_VERBOSE", unset = "1"))
 MIN_TEXT_CHARS_STRONG_SUCCESS <- as.integer(Sys.getenv("MIN_TEXT_CHARS_STRONG_SUCCESS", unset = "600"))
 CONTINUE_IF_THIN_SUCCESS <- as.integer(Sys.getenv("CONTINUE_IF_THIN_SUCCESS", unset = "1"))
 
-if (nrow(fdn) > MAX_ORGS) {
+if (is.finite(MAX_ORGS) && !is.na(MAX_ORGS) && MAX_ORGS > 0 && nrow(fdn) > MAX_ORGS) {
   fdn <- fdn %>% slice_head(n = MAX_ORGS)
 }
 

@@ -16,7 +16,7 @@ if [[ "${VERBOSE}" == "1" ]]; then
 fi
 
 # Scraper runtime controls (override when running the script).
-export MAX_ORGS="${MAX_ORGS:-5000}"
+export MAX_ORGS="${MAX_ORGS:-ALL}"
 export MAX_PAGES_PER_SITE="${MAX_PAGES_PER_SITE:-4}"
 export REQUEST_TIMEOUT_SECONDS="${REQUEST_TIMEOUT_SECONDS:-20}"
 export CRAWL_DELAY_SECONDS="${CRAWL_DELAY_SECONDS:-0.4}"
