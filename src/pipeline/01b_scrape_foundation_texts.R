@@ -13,7 +13,8 @@ fdn <- read_csv(file_foundation_universe, show_col_types = FALSE) %>%
   filter(url_quality_keep, !is.na(candidate_url), candidate_url != "") %>%
   mutate(
     seed_url = candidate_url,
-    seed_domain = extract_domain(seed_url)
+    seed_domain = extract_domain(seed_url),
+    foundation_name = coalesce(name, taxpayer_name, "")
   ) %>%
   distinct(ein, .keep_all = TRUE)
 
@@ -22,6 +23,7 @@ MAX_PAGES_PER_SITE <- as.integer(Sys.getenv("MAX_PAGES_PER_SITE", unset = "4"))
 REQUEST_TIMEOUT <- as.integer(Sys.getenv("REQUEST_TIMEOUT_SECONDS", unset = "20"))
 CRAWL_DELAY <- as.numeric(Sys.getenv("CRAWL_DELAY_SECONDS", unset = "0.4"))
 MAX_RETRIES <- as.integer(Sys.getenv("MAX_RETRIES", unset = "2"))
+SCRAPER_VERBOSE <- as.integer(Sys.getenv("SCRAPER_VERBOSE", unset = "1"))
 
 if (nrow(fdn) > MAX_ORGS) {
   fdn <- fdn %>% slice_head(n = MAX_ORGS)
@@ -93,22 +95,34 @@ collect_candidate_links <- function(seed_url, domain, html_raw = NULL) {
 }
 
 records <- vector("list", length = 0)
+pb <- utils::txtProgressBar(min = 0, max = nrow(fdn), style = 3)
 
 for (i in seq_len(nrow(fdn))) {
   ein_i <- fdn$ein[i]
   seed_i <- fdn$seed_url[i]
   domain_i <- fdn$seed_domain[i]
+  name_i <- str_squish(coalesce(fdn$foundation_name[i], ""))
   if (is.na(seed_i) || seed_i == "") next
+
+  if (SCRAPER_VERBOSE == 1) {
+    message(sprintf("[01b] [%d/%d] EIN %s | %s", i, nrow(fdn), ein_i, name_i))
+  }
 
   links <- collect_candidate_links(seed_i, domain_i)
   links <- links[seq_len(min(length(links), MAX_PAGES_PER_SITE))]
 
   for (u in links) {
+    if (SCRAPER_VERBOSE == 1) {
+      message(sprintf("  -> URL: %s", u))
+    }
     fetched <- NULL
     for (attempt in seq_len(MAX_RETRIES + 1L)) {
       Sys.sleep(CRAWL_DELAY)
       fetched <- safe_fetch(u)
       fetched$attempts <- attempt
+      if (SCRAPER_VERBOSE == 1 && !isTRUE(fetched$ok) && attempt < (MAX_RETRIES + 1L)) {
+        message(sprintf("     retry %d/%d (error_type=%s)", attempt, MAX_RETRIES, fetched$error_type))
+      }
       if (isTRUE(fetched$ok)) break
     }
 
@@ -127,10 +141,9 @@ for (i in seq_len(nrow(fdn))) {
     )
   }
 
-  if (i %% 250 == 0) {
-    message("[01b] Processed ", i, " / ", nrow(fdn), " organizations")
-  }
+  utils::setTxtProgressBar(pb, i)
 }
+close(pb)
 
 web_texts <- bind_rows(records) %>%
   mutate(
