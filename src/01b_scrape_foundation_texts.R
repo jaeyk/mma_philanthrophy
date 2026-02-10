@@ -30,6 +30,8 @@ REQUEST_TIMEOUT <- as.integer(Sys.getenv("REQUEST_TIMEOUT_SECONDS", unset = "20"
 CRAWL_DELAY <- as.numeric(Sys.getenv("CRAWL_DELAY_SECONDS", unset = "0.4"))
 MAX_RETRIES <- as.integer(Sys.getenv("MAX_RETRIES", unset = "2"))
 SCRAPER_VERBOSE <- as.integer(Sys.getenv("SCRAPER_VERBOSE", unset = "1"))
+MIN_TEXT_CHARS_STRONG_SUCCESS <- as.integer(Sys.getenv("MIN_TEXT_CHARS_STRONG_SUCCESS", unset = "600"))
+CONTINUE_IF_THIN_SUCCESS <- as.integer(Sys.getenv("CONTINUE_IF_THIN_SUCCESS", unset = "1"))
 
 if (nrow(fdn) > MAX_ORGS) {
   fdn <- fdn %>% slice_head(n = MAX_ORGS)
@@ -275,7 +277,18 @@ for (i in seq_len(nrow(fdn))) {
     )
 
     if (SCRAPER_VERBOSE == 1 && isTRUE(fetched$ok)) {
-      message(sprintf("     success: %s (chars=%d)", fetched$final_url, nchar(coalesce(fetched$text_clean, ""))))
+      chars_i <- nchar(coalesce(fetched$text_clean, ""))
+      message(sprintf("     success: %s (chars=%d)", fetched$final_url, chars_i))
+      if (chars_i >= MIN_TEXT_CHARS_STRONG_SUCCESS) {
+        message("     early stop: strong success reached; moving to next foundation")
+        break
+      }
+      if (CONTINUE_IF_THIN_SUCCESS == 1) {
+        message("     success is thin; trying remaining candidate URLs as fallback")
+      } else {
+        message("     early stop: first success accepted; moving to next foundation")
+        break
+      }
     }
   }
 
