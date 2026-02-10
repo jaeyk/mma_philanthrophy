@@ -7,6 +7,8 @@ cd "${ROOT_DIR}"
 LOG_DIR="${ROOT_DIR}/processed_data/logs"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/pipeline_$(date +%Y%m%d_%H%M%S).log"
+STATE_FILE="${LOG_DIR}/pipeline_state.env"
+COMPLETED_FILE="${LOG_DIR}/pipeline_completed_stages.txt"
 
 VERBOSE="${VERBOSE:-1}"
 if [[ "${VERBOSE}" == "1" ]]; then
@@ -19,6 +21,12 @@ export MAX_PAGES_PER_SITE="${MAX_PAGES_PER_SITE:-4}"
 export REQUEST_TIMEOUT_SECONDS="${REQUEST_TIMEOUT_SECONDS:-20}"
 export CRAWL_DELAY_SECONDS="${CRAWL_DELAY_SECONDS:-0.4}"
 export MAX_RETRIES="${MAX_RETRIES:-2}"
+
+# Resume controls:
+# - RESUME=1 (default): skip already completed stages from prior run state.
+# - RESET_STATE=1: ignore old state and start from scratch.
+RESUME="${RESUME:-1}"
+RESET_STATE="${RESET_STATE:-0}"
 
 draw_progress() {
   local current="$1"
@@ -44,23 +52,68 @@ STAGES=(
 
 TOTAL="${#STAGES[@]}"
 CURRENT=0
+START_INDEX=1
+
+if [[ "${RESET_STATE}" == "1" ]]; then
+  rm -f "${STATE_FILE}" "${COMPLETED_FILE}"
+fi
+
+if [[ "${RESUME}" == "1" && -f "${STATE_FILE}" ]]; then
+  # shellcheck disable=SC1090
+  source "${STATE_FILE}"
+  if [[ -n "${LAST_COMPLETED_INDEX:-}" ]]; then
+    START_INDEX=$((LAST_COMPLETED_INDEX + 1))
+  fi
+fi
+
+if [[ ! -f "${COMPLETED_FILE}" ]]; then
+  : > "${COMPLETED_FILE}"
+fi
 
 echo "Pipeline log: ${LOG_FILE}"
 echo "Starting pipeline at $(date)" | tee -a "${LOG_FILE}"
 echo "Scrape settings: MAX_ORGS=${MAX_ORGS}, MAX_PAGES_PER_SITE=${MAX_PAGES_PER_SITE}, REQUEST_TIMEOUT_SECONDS=${REQUEST_TIMEOUT_SECONDS}, CRAWL_DELAY_SECONDS=${CRAWL_DELAY_SECONDS}, MAX_RETRIES=${MAX_RETRIES}" | tee -a "${LOG_FILE}"
+echo "Resume settings: RESUME=${RESUME}, RESET_STATE=${RESET_STATE}, START_INDEX=${START_INDEX}" | tee -a "${LOG_FILE}"
 
-for stage in "${STAGES[@]}"; do
-  script="${stage%%|*}"
-  label="${stage##*|}"
-  CURRENT=$((CURRENT + 1))
-  draw_progress "${CURRENT}" "${TOTAL}" "${label}" | tee -a "${LOG_FILE}"
+if (( START_INDEX > TOTAL )); then
+  echo "All stages were already completed in a previous run. Nothing to do." | tee -a "${LOG_FILE}"
+else
+  for idx in "${!STAGES[@]}"; do
+    stage_num=$((idx + 1))
+    stage="${STAGES[$idx]}"
+    script="${stage%%|*}"
+    label="${stage##*|}"
 
-  echo "Running ${script}..." | tee -a "${LOG_FILE}"
-  Rscript "${script}" 2>&1 | tee -a "${LOG_FILE}"
-done
+    if (( stage_num < START_INDEX )); then
+      continue
+    fi
+
+    CURRENT="${stage_num}"
+    draw_progress "${CURRENT}" "${TOTAL}" "${label}" | tee -a "${LOG_FILE}"
+
+    echo "Running ${script}..." | tee -a "${LOG_FILE}"
+    Rscript "${script}" 2>&1 | tee -a "${LOG_FILE}"
+
+    echo "${stage_num}|${script}|${label}|$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${COMPLETED_FILE}"
+    {
+      echo "LAST_COMPLETED_INDEX=${stage_num}"
+      echo "LAST_COMPLETED_SCRIPT=${script}"
+      echo "LAST_COMPLETED_LABEL=\"${label}\""
+      echo "LAST_COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    } > "${STATE_FILE}"
+  done
+fi
 
 echo "Pipeline completed successfully at $(date)" | tee -a "${LOG_FILE}"
 draw_progress "${TOTAL}" "${TOTAL}" "Done" | tee -a "${LOG_FILE}"
+
+# Mark full completion for future resumptions.
+{
+  echo "LAST_COMPLETED_INDEX=${TOTAL}"
+  echo "LAST_COMPLETED_SCRIPT=ALL"
+  echo "LAST_COMPLETED_LABEL=\"Done\""
+  echo "LAST_COMPLETED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} > "${STATE_FILE}"
 
 echo "Shutting down..."
 # macOS/Linux shutdown; may prompt for sudo password.
