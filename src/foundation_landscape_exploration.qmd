@@ -1,0 +1,554 @@
+---
+title: "Foundation Spatial + Financial Landscape"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Focus
+
+This notebook focuses only on two dimensions:
+
+- Spatial patterns: where foundations cluster, urban/rural divide (official RUCA), and big vs small cities.
+- Financial patterns: where money concentrates, where large players are, and inequality within the sector.
+
+## Setup
+
+```{r}
+library(tidyverse)
+library(scales)
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+pred_path <- "../raw_data/predictions.csv"
+mbf_path <- "../raw_data/irs_mbf.csv"
+ruca_url <- "https://www.ers.usda.gov/media/5444/2020-rural-urban-commuting-area-codes-zip-codes.csv?v=97137"
+irs_urls_path <- "../raw_data/irs_urls.csv"
+irs_urls_websites_path <- "../raw_data/irs_urls_websites.csv"
+```
+
+## Load Data
+
+```{r}
+# Prediction output: use model-defined foundation cohort.
+preds <- readr::read_csv(
+  pred_path,
+  col_select = c(ein, predicted, lat, lng),
+  show_col_types = FALSE
+)
+
+# IRS master file: location + financial fields for all orgs.
+mbf <- readr::read_csv(
+  mbf_path,
+  col_select = c(ein, city, state, zip, asset_amt, income_amt, revenue_amt),
+  show_col_types = FALSE
+)
+
+fdn <- preds %>%
+  filter(predicted == "foundation") %>%
+  select(ein, lat, lng) %>%
+  left_join(mbf, by = "ein") %>%
+  mutate(
+    city = str_to_upper(str_trim(city)),
+    state = str_to_upper(str_trim(state)),
+    zip5 = str_sub(str_pad(as.character(zip), 5, side = "left", pad = "0"), 1, 5),
+    assets = suppressWarnings(as.numeric(asset_amt)),
+    income = suppressWarnings(as.numeric(income_amt)),
+    revenue = suppressWarnings(as.numeric(revenue_amt))
+  ) %>%
+  select(ein, lat, lng, city, state, zip5, assets, income, revenue)
+
+fdn %>% summarize(n_foundations = n(), pct_with_coords = mean(!is.na(lat) & !is.na(lng)))
+```
+
+## URL Quality Screen (for Web-Linked Extensions)
+
+```{r}
+irs_urls <- readr::read_csv(
+  irs_urls_path,
+  col_select = c(ein, first_link, irs_url, preferred_link, first_exclude, irs_exclude, url_check),
+  show_col_types = FALSE
+)
+
+web_features <- readr::read_csv(
+  irs_urls_websites_path,
+  col_select = c(url),
+  show_col_types = FALSE
+)
+
+normalize_url <- function(x) {
+  x %>%
+    str_trim() %>%
+    str_replace("^https?://", "") %>%
+    str_replace("^www\\.", "") %>%
+    str_replace("/+$", "") %>%
+    str_to_lower()
+}
+
+extract_domain <- function(x) {
+  x %>%
+    str_trim() %>%
+    str_replace("^https?://", "") %>%
+    str_replace("^www\\.", "") %>%
+    str_extract("^[^/]+") %>%
+    str_to_lower()
+}
+
+# Directory/social/search domains that are typically not official org websites.
+blocked_domain_patterns <- c(
+  "guidestar.org$",
+  "nonprofitfacts.com$",
+  "charitynavigator.org$",
+  "charities.pinkaloo.com$",
+  "facebook.com$",
+  "instagram.com$",
+  "linkedin.com$",
+  "twitter.com$",
+  "x.com$",
+  "youtube.com$",
+  "yelp.com$",
+  "google\\.",
+  "bing.com$",
+  "yahoo.com$",
+  "mapquest.com$",
+  "bizapedia.com$",
+  "dandb.com$",
+  "zoominfo.com$",
+  "wikipedia.org$"
+)
+
+blocked_regex <- paste0("(", paste(blocked_domain_patterns, collapse = "|"), ")")
+
+fdn_urls <- fdn %>%
+  select(ein) %>%
+  left_join(irs_urls, by = "ein") %>%
+  mutate(
+    candidate_url = case_when(
+      !is.na(preferred_link) & preferred_link != "" ~ preferred_link,
+      !is.na(irs_url) & irs_url != "" ~ irs_url,
+      !is.na(first_link) & first_link != "" ~ first_link,
+      TRUE ~ NA_character_
+    ),
+    url_source = case_when(
+      !is.na(preferred_link) & preferred_link != "" ~ "preferred_link",
+      !is.na(irs_url) & irs_url != "" ~ "irs_url",
+      !is.na(first_link) & first_link != "" ~ "first_link",
+      TRUE ~ "none"
+    ),
+    url_norm = normalize_url(candidate_url),
+    domain = extract_domain(candidate_url),
+    has_candidate = !is.na(candidate_url) & candidate_url != "",
+    source_excluded = case_when(
+      url_source == "irs_url" ~ irs_exclude == 1,
+      url_source == "first_link" ~ first_exclude == 1,
+      TRUE ~ FALSE
+    ),
+    failed_check = str_to_lower(coalesce(as.character(url_check), "")) == "f",
+    malformed_domain = is.na(domain) | !str_detect(domain, "\\\\."),
+    blocked_domain = str_detect(coalesce(domain, ""), blocked_regex),
+    url_quality_keep = has_candidate & !source_excluded & !failed_check & !malformed_domain & !blocked_domain
+  )
+
+web_feature_norm <- web_features %>%
+  mutate(url_norm = normalize_url(url)) %>%
+  filter(!is.na(url_norm), url_norm != "") %>%
+  distinct(url_norm)
+
+fdn_urls <- fdn_urls %>%
+  left_join(web_feature_norm %>% mutate(has_web_features = TRUE), by = "url_norm") %>%
+  mutate(has_web_features = coalesce(has_web_features, FALSE))
+
+fdn_urls %>%
+  summarize(
+    n_foundations = n(),
+    with_any_candidate_url = sum(has_candidate, na.rm = TRUE),
+    kept_after_quality_screen = sum(url_quality_keep, na.rm = TRUE),
+    kept_and_linked_to_web_features = sum(url_quality_keep & has_web_features, na.rm = TRUE)
+  )
+```
+
+```{r}
+fdn_urls %>%
+  count(url_source, sort = TRUE)
+```
+
+```{r}
+fdn_urls %>%
+  summarize(
+    pct_blocked_domain = mean(blocked_domain, na.rm = TRUE),
+    pct_source_excluded = mean(source_excluded, na.rm = TRUE),
+    pct_failed_check = mean(failed_check, na.rm = TRUE),
+    pct_malformed_domain = mean(malformed_domain, na.rm = TRUE)
+  )
+```
+
+```{r}
+fdn_urls %>%
+  filter(url_quality_keep) %>%
+  count(domain, sort = TRUE) %>%
+  slice_head(n = 20)
+```
+
+## Build Spatial Context: USDA RUCA + City Size
+
+```{r}
+# USDA Economic Research Service RUCA ZIP codes (Census-based commuting classification).
+ruca_zip <- readr::read_csv(ruca_url, show_col_types = FALSE) %>%
+  transmute(
+    zip5 = str_sub(str_pad(as.character(ZIPCode), 5, side = "left", pad = "0"), 1, 5),
+    ruca_primary = as.numeric(PrimaryRUCA),
+    ruca_secondary = as.numeric(SecondaryRUCA)
+  ) %>%
+  distinct(zip5, .keep_all = TRUE) %>%
+  mutate(
+    urbanicity_ruca = case_when(
+      ruca_primary >= 1 & ruca_primary < 4 ~ "Metropolitan",
+      ruca_primary >= 4 & ruca_primary < 7 ~ "Micropolitan",
+      ruca_primary >= 7 & ruca_primary < 10 ~ "Small town",
+      ruca_primary == 10 ~ "Rural",
+      TRUE ~ NA_character_
+    )
+  )
+
+fdn <- fdn %>% left_join(ruca_zip, by = "zip5")
+
+fdn %>% count(urbanicity_ruca, sort = TRUE)
+```
+
+### Big vs Small City Tiers (city-state counts)
+
+```{r}
+city_org_size <- mbf %>%
+  mutate(
+    city = str_to_upper(str_trim(city)),
+    state = str_to_upper(str_trim(state))
+  ) %>%
+  filter(!is.na(city), city != "", !is.na(state), state != "") %>%
+  count(state, city, name = "all_org_count_city") %>%
+  mutate(
+    city_size_tier = case_when(
+      all_org_count_city < 100 ~ "Small city",
+      all_org_count_city < 500 ~ "Mid-size city",
+      all_org_count_city < 2000 ~ "Large city",
+      TRUE ~ "Mega city"
+    )
+  )
+
+fdn <- fdn %>% left_join(city_org_size, by = c("state", "city"))
+
+fdn %>% count(city_size_tier, sort = TRUE)
+```
+
+## Spatial Landscape
+
+### Where foundations cluster (density map)
+
+```{r}
+# Keep only plausible US geocodes and focus map on contiguous US for readability.
+fdn_map <- fdn %>%
+  filter(!is.na(lat), !is.na(lng)) %>%
+  filter(lat >= 18, lat <= 72, lng >= -170, lng <= -60)
+
+fdn_non_contig_counts <- fdn_map %>%
+  mutate(region_group = case_when(
+    lng >= -130 & lng <= -65 & lat >= 24 & lat <= 50 ~ "Contiguous US",
+    state == "AK" ~ "Alaska",
+    state == "HI" ~ "Hawaii",
+    state == "PR" ~ "Puerto Rico",
+    TRUE ~ "Other non-contiguous"
+  )) %>%
+  count(region_group, sort = TRUE)
+
+fdn_non_contig_counts
+```
+
+```{r}
+fdn_map %>%
+  filter(lng >= -130, lng <= -65, lat >= 24, lat <= 50) %>%
+  ggplot(aes(x = lng, y = lat)) +
+  stat_bin_2d(bins = 140) +
+  coord_fixed(1.3) +
+  scale_fill_gradient(
+    low = "grey95",
+    high = "grey20",
+    trans = "log10",
+    labels = comma_format()
+  ) +
+  labs(
+    title = "Spatial concentration of foundations (contiguous U.S.)",
+    subtitle = "USDA RUCA-linked, model-defined foundations (predicted == 'foundation')",
+    x = "Longitude",
+    y = "Latitude",
+    fill = "Count"
+  )
+```
+
+### Urban/rural divide in foundation counts
+
+```{r}
+urban_count <- fdn %>%
+  filter(!is.na(urbanicity_ruca)) %>%
+  count(urbanicity_ruca, sort = TRUE) %>%
+  mutate(pct = n / sum(n))
+
+urban_count
+```
+
+```{r}
+urban_count %>%
+  ggplot(aes(x = reorder(urbanicity_ruca, n), y = n)) +
+  geom_col(fill = "grey35") +
+  coord_flip() +
+  scale_y_continuous(labels = comma_format()) +
+  labs(
+    title = "Urban/rural divide (USDA RUCA): foundation counts",
+    x = "RUCA category",
+    y = "Number of foundations"
+  )
+```
+
+### Big vs small city distribution
+
+```{r}
+city_size_count <- fdn %>%
+  filter(!is.na(city_size_tier)) %>%
+  count(city_size_tier, sort = TRUE) %>%
+  mutate(pct = n / sum(n))
+
+city_size_count
+```
+
+```{r}
+city_size_count %>%
+  ggplot(aes(x = reorder(city_size_tier, n), y = n)) +
+  geom_col(fill = "grey50") +
+  coord_flip() +
+  scale_y_continuous(labels = comma_format()) +
+  labs(
+    title = "Foundations by city size tier",
+    x = "City size tier",
+    y = "Number of foundations"
+  )
+```
+
+## Financial Landscape
+
+### Overall financial distributions
+
+```{r}
+money_long <- fdn %>%
+  select(ein, assets, income, revenue) %>%
+  pivot_longer(cols = c(assets, income, revenue), names_to = "metric", values_to = "value") %>%
+  filter(!is.na(value), value > 0)
+
+money_long %>%
+  group_by(metric) %>%
+  summarize(
+    n = n(),
+    median = median(value),
+    p90 = quantile(value, 0.90),
+    p99 = quantile(value, 0.99),
+    max = max(value),
+    .groups = "drop"
+  )
+```
+
+```{r}
+money_long %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(bins = 80, fill = "grey40", color = "grey95") +
+  scale_x_log10(labels = comma_format()) +
+  facet_wrap(~metric, scales = "free_y") +
+  labs(
+    title = "Foundation financial distributions",
+    subtitle = "Log x-axis",
+    x = "Amount (log scale)",
+    y = "Count"
+  )
+```
+
+## Spatial + Financial Together
+
+### Where big players are (top 1% by assets)
+
+```{r}
+asset_cut <- fdn %>%
+  filter(!is.na(assets), assets > 0) %>%
+  summarize(cutoff = quantile(assets, 0.99)) %>%
+  pull(cutoff)
+
+fdn <- fdn %>%
+  mutate(big_player_assets = !is.na(assets) & assets >= asset_cut)
+
+fdn %>% summarize(top1pct_asset_cutoff = asset_cut, n_big_players = sum(big_player_assets, na.rm = TRUE))
+```
+
+```{r}
+big_player_by_urban <- fdn %>%
+  filter(!is.na(urbanicity_ruca)) %>%
+  group_by(urbanicity_ruca) %>%
+  summarize(
+    n_foundations = n(),
+    n_big_players = sum(big_player_assets, na.rm = TRUE),
+    share_big_players = n_big_players / n_foundations,
+    median_assets = median(assets[assets > 0], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(share_big_players))
+
+big_player_by_urban
+```
+
+```{r}
+big_player_by_urban %>%
+  ggplot(aes(x = reorder(urbanicity_ruca, share_big_players), y = share_big_players)) +
+  geom_col(fill = "grey30") +
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(
+    title = "Share of large-asset foundations by urbanicity tier",
+    x = "RUCA category",
+    y = "Share that are top 1% by assets"
+  )
+```
+
+```{r}
+big_player_by_city_size <- fdn %>%
+  filter(!is.na(city_size_tier)) %>%
+  group_by(city_size_tier) %>%
+  summarize(
+    n_foundations = n(),
+    n_big_players = sum(big_player_assets, na.rm = TRUE),
+    share_big_players = n_big_players / n_foundations,
+    median_assets = median(assets[assets > 0], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(share_big_players))
+
+big_player_by_city_size
+```
+
+```{r}
+big_player_by_city_size %>%
+  ggplot(aes(x = reorder(city_size_tier, share_big_players), y = share_big_players)) +
+  geom_col(fill = "grey55") +
+  coord_flip() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(
+    title = "Share of large-asset foundations by city size tier",
+    x = "City size tier",
+    y = "Share that are top 1% by assets"
+  )
+```
+
+### City-level concentration: number of foundations vs total assets
+
+```{r}
+city_fin <- fdn %>%
+  filter(!is.na(city), city != "", !is.na(state), state != "") %>%
+  group_by(state, city, city_size_tier) %>%
+  summarize(
+    n_foundations = n(),
+    total_assets = sum(assets, na.rm = TRUE),
+    median_assets = median(assets[assets > 0], na.rm = TRUE),
+    n_big_players = sum(big_player_assets, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(n_foundations >= 20)
+
+city_fin %>% arrange(desc(total_assets)) %>% slice_head(n = 20)
+```
+
+```{r}
+city_fin %>%
+  ggplot(aes(x = n_foundations, y = total_assets, shape = city_size_tier, size = n_big_players)) +
+  geom_point(alpha = 0.75, color = "grey20") +
+  scale_y_log10(labels = comma_format()) +
+  scale_x_log10(labels = comma_format()) +
+  labs(
+    title = "City-level scale vs wealth concentration",
+    subtitle = "Cities with >= 20 foundations; point size = number of top 1% asset foundations",
+    x = "Number of foundations (log)",
+    y = "Total assets (log)",
+    shape = "City size tier",
+    size = "Big players"
+  )
+```
+
+## Inequality Within the Foundation Sector
+
+```{r}
+gini <- function(x) {
+  x <- as.numeric(x)
+  x <- x[!is.na(x) & x >= 0]
+  n <- length(x)
+  if (n == 0) return(NA_real_)
+  s <- sum(x)
+  if (s == 0) return(NA_real_)
+  x <- sort(x)
+  i <- seq_len(n)
+  (2 * sum(i * x)) / (n * s) - (n + 1) / n
+}
+
+top_share <- function(x, p = 0.01) {
+  x <- as.numeric(x)
+  x <- x[!is.na(x) & x > 0]
+  if (length(x) == 0) return(NA_real_)
+  cutoff <- quantile(x, 1 - p)
+  sum(x[x >= cutoff]) / sum(x)
+}
+```
+
+```{r}
+fdn %>%
+  summarize(
+    gini_assets = gini(assets),
+    gini_income = gini(income),
+    gini_revenue = gini(revenue),
+    top1pct_asset_share = top_share(assets, 0.01),
+    top1pct_revenue_share = top_share(revenue, 0.01)
+  )
+```
+
+```{r}
+ineq_urban <- fdn %>%
+  filter(!is.na(urbanicity_ruca)) %>%
+  group_by(urbanicity_ruca) %>%
+  summarize(
+    n = n(),
+    gini_assets = gini(assets),
+    top1pct_asset_share = top_share(assets, 0.01),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(gini_assets))
+
+ineq_urban
+```
+
+```{r}
+ineq_city_size <- fdn %>%
+  filter(!is.na(city_size_tier)) %>%
+  group_by(city_size_tier) %>%
+  summarize(
+    n = n(),
+    gini_assets = gini(assets),
+    top1pct_asset_share = top_share(assets, 0.01),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(gini_assets))
+
+ineq_city_size
+```
+
+## Interpretation Notes
+
+- Urban/rural uses official USDA ERS RUCA ZIP codes (2020), which are Census-based commuting area classifications.
+- City size is based on IRS organizational counts in city-state cells.
+- This setup is useful for descriptive concentration analysis and identifying where large players cluster.
+- Direct inter-foundation ties (grant flows, board interlocks) are not in current files.

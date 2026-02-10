@@ -1,0 +1,17 @@
+construct,subdimension,pattern,weight,polarity,notes
+tech,digital_infrastructure,technology|digital infrastructure|software|platform|data infrastructure|information technology,1.5,positive,Broad technology support
+tech,stem_research,computer science|engineering|STEM|technical training|coding|cybersecurity,1.5,positive,Tech ecosystem inputs
+tech,civic_tech,civic tech|govtech|digital public goods|digital inclusion|broadband,1.5,positive,Public-interest technology
+tech,exclusion,low-tech|technology-free,1,negative,Potential non-tech orientation
+ai,ai_general,artificial intelligence|machine learning|generative ai|foundation model|deep learning|nlp,2,positive,Core AI terms
+ai,ai_governance,ai safety|responsible ai|ai ethics|algorithmic accountability|ai governance,1.5,positive,AI governance and safeguards
+ai,ai_adoption,ai workforce|ai literacy|ai adoption|automation strategy,1.5,positive,Diffusion and adoption
+ai,exclusion,anti-ai|against ai,1,negative,Opposition framing
+innovation,innovation_general,innovation|innovative|R&D|research and development|pilot program|innovation lab,1.5,positive,Broad innovation framing
+innovation,public_innovation,policy innovation|social innovation|public innovation|institutional innovation,1.5,positive,Innovation in governance/social sector
+innovation,translation,translational research|commercialization|technology transfer,1.5,positive,Research-to-use pathway
+innovation,exclusion,traditional methods only|non-innovative,1,negative,Potential non-innovation orientation
+entrepreneurship,startups,startup|start-up|new venture|venture creation|venture capital,2,positive,Startup creation/investment
+entrepreneurship,sme_support,small business|microenterprise|business incubator|accelerator|entrepreneur support,2,positive,Entrepreneur support pipeline
+entrepreneurship,inclusive_entrepreneurship,women entrepreneurs|minority-owned business|inclusive entrepreneurship|entrepreneurial ecosystem,1.5,positive,Equity-oriented entrepreneurship
+entrepreneurship,exclusion,anti-business|non-entrepreneurial,1,negative,Potential non-entrepreneur orientation

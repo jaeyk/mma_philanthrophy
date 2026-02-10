@@ -1,0 +1,14 @@
+construct,subdimension,pattern,weight,polarity,notes
+democracy,elections,vot(e|ing)|ballot|polling place|poll worker|election administration,2,positive,Core election participation/admin signals
+democracy,civic_participation,civic engagement|public participation|community organizing|deliberative|civic education,1.5,positive,Participation infrastructure
+democracy,rights_accountability,civil rights|voting rights|government accountability|transparency|open government|watchdog,2,positive,Rights and accountability
+democracy,media_information,local journalism|news literacy|misinformation|disinformation|fact-check|information integrity,1.5,positive,Information ecosystem support
+democracy,institutions,rule of law|democratic institution|participatory governance|public trust,1.5,positive,Institutional democratic focus
+democracy,exclusion,authoritarian|anti-democratic|voter suppression,1,negative,Context often indicates threat/opposition rather than support
+state_capacity,public_admin,public administration|administrative capacity|government operations|agency modernization,2,positive,Core state-capacity signals
+state_capacity,service_delivery,service delivery|implementation capacity|program implementation|frontline delivery,2,positive,Public service implementation
+state_capacity,civil_service,civil service|public workforce|government staffing|bureaucratic capacity,1.5,positive,Staff and capability
+state_capacity,data_systems,government data system|public sector data|IT modernization|digital government|interoperab,1.5,positive,System/data infrastructure
+state_capacity,fiscal_procurement,municipal finance|public finance management|procurement reform|budget capacity|grant administration,1.5,positive,Fiscal/administrative machinery
+state_capacity,local_state_government,city government|county government|state agency|municipal government|public agency,1,positive,Government unit references
+state_capacity,exclusion,privatization only|anti-government|defund government,1,negative,Can indicate opposition to state capacity
