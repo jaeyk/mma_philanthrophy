@@ -16,26 +16,7 @@ taxonomy <- read_csv(file_taie_taxonomy, show_col_types = FALSE) %>%
     weight = as.numeric(weight)
   )
 
-text_df <- fdn %>%
-  mutate(
-    issue1_text = if ("issue_issue_rank1" %in% names(.)) coalesce(as.character(issue_issue_rank1), "") else "",
-    issue2_text = if ("issue_issue_rank2" %in% names(.)) coalesce(as.character(issue_issue_rank2), "") else "",
-    issue3_text = if ("issue_issue_rank3" %in% names(.)) coalesce(as.character(issue_issue_rank3), "") else ""
-  ) %>%
-  transmute(
-    ein,
-    signal_text = str_to_lower(str_c(
-      coalesce(name, ""), " ",
-      coalesce(taxpayer_name, ""), " ",
-      coalesce(candidate_url, ""), " ",
-      coalesce(domain, ""), " ",
-      coalesce(ntee_cd, ""), " ",
-      issue1_text, " ",
-      issue2_text, " ",
-      issue3_text
-    ))
-  ) %>%
-  distinct(ein, .keep_all = TRUE)
+text_df <- build_signal_text(fdn, file_web_texts)
 
 matched <- text_df %>%
   crossing(taxonomy) %>%
@@ -110,4 +91,3 @@ long_flags <- bind_rows(
 write_csv(long_flags, file.path(path_final, "taie_construct_distribution.csv"))
 
 message("[02c] Done. Wrote: ", file_taie_scores)
-

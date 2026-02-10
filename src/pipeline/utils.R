@@ -72,3 +72,37 @@ fetch_ruca <- function(file_ruca_cache, ruca_url) {
     distinct(zip5, .keep_all = TRUE)
 }
 
+build_signal_text <- function(fdn, file_web_texts) {
+  base_text <- fdn %>%
+    transmute(
+      ein,
+      base_text = str_to_lower(str_c(
+        coalesce(name, ""), " ",
+        coalesce(taxpayer_name, ""), " ",
+        coalesce(candidate_url, ""), " ",
+        coalesce(domain, ""), " ",
+        coalesce(ntee_cd, "")
+      ))
+    ) %>%
+    distinct(ein, .keep_all = TRUE)
+
+  if (file.exists(file_web_texts)) {
+    web_agg <- readr::read_csv(file_web_texts, show_col_types = FALSE) %>%
+      filter(!is.na(text_clean), text_clean != "") %>%
+      group_by(ein) %>%
+      summarize(web_text = str_to_lower(str_c(text_clean, collapse = " ")), .groups = "drop")
+
+    out <- base_text %>%
+      left_join(web_agg, by = "ein") %>%
+      mutate(
+        signal_text = str_squish(str_c(base_text, " ", coalesce(web_text, "")))
+      ) %>%
+      select(ein, signal_text)
+  } else {
+    out <- base_text %>%
+      mutate(signal_text = str_squish(base_text)) %>%
+      select(ein, signal_text)
+  }
+
+  out
+}

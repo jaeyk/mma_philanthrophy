@@ -16,27 +16,8 @@ taxonomy <- read_csv(file_construct_taxonomy, show_col_types = FALSE) %>%
     weight = as.numeric(weight)
   )
 
-# Build available weak-text field from current data assets.
-text_df <- fdn %>%
-  mutate(
-    issue1_text = if ("issue_issue_rank1" %in% names(.)) coalesce(as.character(issue_issue_rank1), "") else "",
-    issue2_text = if ("issue_issue_rank2" %in% names(.)) coalesce(as.character(issue_issue_rank2), "") else "",
-    issue3_text = if ("issue_issue_rank3" %in% names(.)) coalesce(as.character(issue_issue_rank3), "") else ""
-  ) %>%
-  transmute(
-    ein,
-    signal_text = str_to_lower(str_c(
-      coalesce(name, ""), " ",
-      coalesce(taxpayer_name, ""), " ",
-      coalesce(candidate_url, ""), " ",
-      coalesce(domain, ""), " ",
-      coalesce(ntee_cd, ""), " ",
-      issue1_text, " ",
-      issue2_text, " ",
-      issue3_text
-    ))
-  ) %>%
-  distinct(ein, .keep_all = TRUE)
+# Build available weak-text field from current data assets + scraped web corpus (if present).
+text_df <- build_signal_text(fdn, file_web_texts)
 
 matched <- text_df %>%
   crossing(taxonomy) %>%

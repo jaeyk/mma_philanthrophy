@@ -3,48 +3,65 @@ source(file.path("src", "pipeline", "utils.R"))
 
 message("[02] Classifying issue/geographic/demographic focus...")
 
-score_cols <- c(
-  "arts", "civic", "community", "econ", "education", "foundations",
-  "health", "hobby", "housing", "professional", "regligious",
-  "research", "socialfraternal", "unions", "youth"
-)
-
 fdn <- read_csv(file_foundation_universe, show_col_types = FALSE)
-
-if (!all(score_cols %in% names(fdn))) {
-  stop("Missing issue score columns in foundation universe.")
+if (!file.exists(file_issue_taxonomy)) {
+  stop("Missing issue taxonomy file: ", file_issue_taxonomy)
 }
 
-# Issue focus from prediction score vectors.
-issue_ranked <- fdn %>%
-  select(ein, all_of(score_cols)) %>%
-  pivot_longer(cols = all_of(score_cols), names_to = "issue", values_to = "score") %>%
+issue_taxonomy <- read_csv(file_issue_taxonomy, show_col_types = FALSE) %>%
+  mutate(
+    issue = str_to_lower(issue),
+    pattern = as.character(pattern),
+    weight = as.numeric(weight),
+    polarity = str_to_lower(polarity)
+  )
+
+# Geographic and demographic focus via weak supervision from reusable signal text.
+focus_text <- build_signal_text(fdn, file_web_texts) %>%
+  rename(focus_text = signal_text)
+
+# Issue focus from scraped/aggregated text using weighted pattern matching.
+issue_matches <- focus_text %>%
+  crossing(issue_taxonomy) %>%
+  mutate(
+    match = str_detect(focus_text, regex(pattern, ignore_case = TRUE)),
+    signed_weight = if_else(polarity == "negative", -abs(weight), abs(weight))
+  ) %>%
+  filter(match)
+
+issue_scores <- issue_matches %>%
+  group_by(ein, issue) %>%
+  summarize(
+    issue_score = sum(signed_weight, na.rm = TRUE),
+    issue_n_matches = n(),
+    issue_patterns = str_c(unique(pattern), collapse = " | "),
+    .groups = "drop"
+  ) %>%
+  mutate(issue_score = pmax(issue_score, 0))
+
+issue_ranked <- issue_scores %>%
   group_by(ein) %>%
-  arrange(desc(score), .by_group = TRUE) %>%
+  arrange(desc(issue_score), desc(issue_n_matches), .by_group = TRUE) %>%
   mutate(rank = row_number()) %>%
   ungroup()
 
 issue_top <- issue_ranked %>%
   filter(rank <= 3) %>%
-  select(ein, rank, issue, score) %>%
+  select(ein, rank, issue, issue_score) %>%
   mutate(rank_label = paste0("issue_rank", rank)) %>%
-  pivot_wider(names_from = rank_label, values_from = c(issue, score))
-
-issue_entropy <- fdn %>%
-  rowwise() %>%
-  transmute(ein, issue_entropy = entropy(c_across(all_of(score_cols))))
-
-# Geographic and demographic focus via weak supervision from name/domain/url text.
-focus_text <- fdn %>%
-  transmute(
-    ein,
-    focus_text = str_to_lower(str_c(
-      coalesce(name, ""), " ",
-      coalesce(taxpayer_name, ""), " ",
-      coalesce(domain, ""), " ",
-      coalesce(candidate_url, "")
-    ))
+  pivot_wider(names_from = rank_label, values_from = c(issue, issue_score)) %>%
+  rename(
+    issue_label_rank1 = issue_issue_rank1,
+    issue_label_rank2 = issue_issue_rank2,
+    issue_label_rank3 = issue_issue_rank3,
+    issue_score_rank1 = issue_score_issue_rank1,
+    issue_score_rank2 = issue_score_issue_rank2,
+    issue_score_rank3 = issue_score_issue_rank3
   )
+
+issue_entropy <- issue_scores %>%
+  group_by(ein) %>%
+  summarize(issue_entropy = entropy(issue_score), .groups = "drop")
 
 geo_focus <- focus_text %>%
   transmute(
@@ -92,9 +109,9 @@ classified <- fdn %>%
     demographic_focus_labels = coalesce(demographic_focus_labels, "unknown"),
     demographic_focus_n = coalesce(demographic_focus_n, 0L),
     geo_focus = coalesce(geo_focus, "unknown"),
-    issue_focus_primary = issue_issue_rank1,
-    issue_focus_secondary = issue_issue_rank2,
-    issue_focus_tertiary = issue_issue_rank3
+    issue_focus_primary = coalesce(issue_label_rank1, "unknown"),
+    issue_focus_secondary = coalesce(issue_label_rank2, "unknown"),
+    issue_focus_tertiary = coalesce(issue_label_rank3, "unknown")
   )
 
 write_csv(classified, file_focus_classified)
@@ -110,4 +127,3 @@ write_csv(focus_summary$geo_focus, file.path(path_final, "focus_geo_distribution
 write_csv(focus_summary$demographic_label, file.path(path_final, "focus_demographic_distribution_top25.csv"))
 
 message("[02] Done. Wrote: ", file_focus_classified)
-

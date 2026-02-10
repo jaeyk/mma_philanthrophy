@@ -13,7 +13,7 @@ if (basename(getwd()) == "mma_philanthrophy") {
 }
 
 path_raw <- file.path(project_root, "raw_data")
-path_outputs <- file.path(project_root, "output")
+path_outputs <- file.path(project_root, "processed_data")
 path_intermediate <- file.path(path_outputs, "intermediate")
 path_final <- file.path(path_outputs, "final")
 path_figures <- file.path(path_outputs, "figures")
@@ -44,3 +44,7 @@ file_construct_scores <- file.path(path_intermediate, "foundation_construct_scor
 file_manual_label_template <- file.path(path_templates, "manual_labels_democracy_state_capacity_template.csv")
 file_taie_taxonomy <- file.path(path_taxonomy, "tech_ai_innovation_entrepreneurship_keywords.csv")
 file_taie_scores <- file.path(path_intermediate, "foundation_taie_scores.csv.gz")
+file_issue_taxonomy <- file.path(path_taxonomy, "issue_focus_keywords.csv")
+file_web_texts <- file.path(path_intermediate, "foundation_web_texts.csv.gz")
+file_web_texts_summary <- file.path(path_final, "foundation_web_texts_summary.csv")
+file_web_text_failures <- file.path(path_final, "foundation_web_text_failures.csv")

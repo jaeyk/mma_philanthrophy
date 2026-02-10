@@ -79,20 +79,22 @@ by_city_tier <- fdn %>%
   arrange(desc(big_player_rate))
 write_csv(by_city_tier, file.path(path_final, "inequality_by_city_tier.csv"))
 
-by_issue <- fdn %>%
-  filter(!is.na(issue_focus_primary)) %>%
-  group_by(issue_focus_primary) %>%
-  summarize(
-    n = n(),
-    n_big_players = sum(big_player_assets, na.rm = TRUE),
-    big_player_rate = n_big_players / n,
-    median_assets = median(assets[assets > 0], na.rm = TRUE),
-    gini_assets = gini(assets),
-    .groups = "drop"
-  ) %>%
-  filter(n >= 250) %>%
-  arrange(desc(big_player_rate))
-write_csv(by_issue, file.path(path_final, "inequality_by_primary_issue.csv"))
+if ("issue_focus_primary" %in% names(fdn)) {
+  by_issue <- fdn %>%
+    filter(!is.na(issue_focus_primary)) %>%
+    group_by(issue_focus_primary) %>%
+    summarize(
+      n = n(),
+      n_big_players = sum(big_player_assets, na.rm = TRUE),
+      big_player_rate = n_big_players / n,
+      median_assets = median(assets[assets > 0], na.rm = TRUE),
+      gini_assets = gini(assets),
+      .groups = "drop"
+    ) %>%
+    filter(n >= 250) %>%
+    arrange(desc(big_player_rate))
+  write_csv(by_issue, file.path(path_final, "inequality_by_primary_issue.csv"))
+}
 
 by_geo_focus <- fdn %>%
   group_by(geo_focus) %>%
@@ -196,15 +198,17 @@ p_ruca <- by_ruca %>%
   theme_bw(base_size = 12)
 ggsave(file.path(path_figures, "fig_big_player_rate_by_ruca.png"), p_ruca, width = 8, height = 5, dpi = 300)
 
-p_issue <- by_issue %>%
-  slice_max(order_by = n, n = 12) %>%
-  ggplot(aes(x = reorder(issue_focus_primary, gini_assets), y = gini_assets)) +
-  geom_col(fill = "grey45") +
-  coord_flip() +
-  labs(x = "Primary issue focus", y = "Asset Gini",
-       title = "Within-focus asset inequality (top 12 issue groups by N)") +
-  theme_bw(base_size = 12)
-ggsave(file.path(path_figures, "fig_gini_by_primary_issue.png"), p_issue, width = 8, height = 5, dpi = 300)
+if (exists("by_issue")) {
+  p_issue <- by_issue %>%
+    slice_max(order_by = n, n = 12) %>%
+    ggplot(aes(x = reorder(issue_focus_primary, gini_assets), y = gini_assets)) +
+    geom_col(fill = "grey45") +
+    coord_flip() +
+    labs(x = "Primary issue focus", y = "Asset Gini",
+         title = "Within-focus asset inequality (top 12 issue groups by N)") +
+    theme_bw(base_size = 12)
+  ggsave(file.path(path_figures, "fig_gini_by_primary_issue.png"), p_issue, width = 8, height = 5, dpi = 300)
+}
 
 p_scatter <- fdn %>%
   filter(!is.na(ruca_category), !is.na(assets), assets > 0) %>%
@@ -242,4 +246,4 @@ if ("taie_profile" %in% names(fdn)) {
   ggsave(file.path(path_figures, "fig_taie_profile_distribution.png"), p_taie, width = 8, height = 5, dpi = 300)
 }
 
-message("[03] Done. Tables in output/final and figures in output/figures.")
+message("[03] Done. Tables in processed_data/final and figures in processed_data/figures.")

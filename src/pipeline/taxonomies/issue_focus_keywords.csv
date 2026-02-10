@@ -1,0 +1,17 @@
+issue,pattern,weight,polarity,notes
+arts,arts|culture|museum|theater|music|performing arts|creative,1.5,positive,Arts and culture
+civic,civic engagement|civic participation|voter|election|democracy|public participation,2,positive,Civic and democratic participation
+community,community development|neighborhood|community building|social cohesion,1.5,positive,Community strengthening
+econ,economic development|workforce development|job training|economic mobility|small business,1.5,positive,Economic opportunity
+education,education|school|student|teacher|literacy|higher education|scholarship,2,positive,Education and learning
+health,health|public health|mental health|medical|clinic|wellness,2,positive,Health and healthcare
+housing,housing|homeless|affordable housing|shelter|tenant|eviction,2,positive,Housing stability
+professional,professional development|career advancement|continuing education|professional association,1.2,positive,Professional advancement
+religious,religious|faith-based|church|ministry|synagogue|mosque|spiritual,1.2,positive,Religious or faith-oriented support
+research,research|evidence-based|evaluation|policy research|academic research|science,1.5,positive,Research and evidence production
+socialfraternal,fraternal|fellowship|lodge|club|social organization,1.2,positive,Fraternal/social associations
+unions,labor union|collective bargaining|worker rights|organized labor,1.8,positive,Labor organizing
+youth,youth|children|adolescent|teen|after-school|early childhood,1.8,positive,Youth and child focus
+environment,climate|environment|conservation|sustainability|clean energy,1.8,positive,Environmental and climate issues
+justice,criminal justice|racial justice|legal aid|civil rights|reentry|public defender,1.8,positive,Justice and legal equity
+misc,sports only|hobby only|social events only,1,negative,Potentially non-policy issue signals

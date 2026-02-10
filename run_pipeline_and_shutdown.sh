@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT_DIR}"
 
-LOG_DIR="${ROOT_DIR}/output/logs"
+LOG_DIR="${ROOT_DIR}/processed_data/logs"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/pipeline_$(date +%Y%m%d_%H%M%S).log"
 
@@ -12,6 +12,13 @@ VERBOSE="${VERBOSE:-1}"
 if [[ "${VERBOSE}" == "1" ]]; then
   set -x
 fi
+
+# Scraper runtime controls (override when running the script).
+export MAX_ORGS="${MAX_ORGS:-5000}"
+export MAX_PAGES_PER_SITE="${MAX_PAGES_PER_SITE:-4}"
+export REQUEST_TIMEOUT_SECONDS="${REQUEST_TIMEOUT_SECONDS:-20}"
+export CRAWL_DELAY_SECONDS="${CRAWL_DELAY_SECONDS:-0.4}"
+export MAX_RETRIES="${MAX_RETRIES:-2}"
 
 draw_progress() {
   local current="$1"
@@ -28,6 +35,7 @@ draw_progress() {
 
 STAGES=(
   "src/pipeline/01_build_foundation_universe.R|Scraping/Universe Build"
+  "src/pipeline/01b_scrape_foundation_texts.R|Website Text Scraping"
   "src/pipeline/02_classify_focus.R|Core Focus Classification"
   "src/pipeline/02b_score_democracy_state_capacity.R|Democracy/State Capacity Classification"
   "src/pipeline/02c_score_taie_constructs.R|Tech/AI/Innovation/Entrepreneurship Classification"
@@ -39,6 +47,7 @@ CURRENT=0
 
 echo "Pipeline log: ${LOG_FILE}"
 echo "Starting pipeline at $(date)" | tee -a "${LOG_FILE}"
+echo "Scrape settings: MAX_ORGS=${MAX_ORGS}, MAX_PAGES_PER_SITE=${MAX_PAGES_PER_SITE}, REQUEST_TIMEOUT_SECONDS=${REQUEST_TIMEOUT_SECONDS}, CRAWL_DELAY_SECONDS=${CRAWL_DELAY_SECONDS}, MAX_RETRIES=${MAX_RETRIES}" | tee -a "${LOG_FILE}"
 
 for stage in "${STAGES[@]}"; do
   script="${stage%%|*}"
