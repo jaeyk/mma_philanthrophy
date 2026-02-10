@@ -16,13 +16,25 @@ if (file.exists(file_web_failure_domain_recommendations)) {
 }
 
 fdn <- read_csv(file_foundation_universe, show_col_types = FALSE) %>%
-  filter(url_quality_keep, !is.na(candidate_url), candidate_url != "") %>%
+  filter(!is.na(candidate_url), candidate_url != "") %>%
   mutate(
     seed_url = candidate_url,
     seed_domain = extract_domain(seed_url),
     foundation_name = coalesce(name, taxpayer_name, "")
   ) %>%
   distinct(ein, .keep_all = TRUE)
+
+URL_FILTER_MODE <- str_to_lower(str_trim(Sys.getenv("URL_FILTER_MODE", unset = "candidate")))
+if (URL_FILTER_MODE == "quality_keep") {
+  fdn <- fdn %>% filter(url_quality_keep %in% TRUE)
+} else if (URL_FILTER_MODE != "candidate") {
+  warning(sprintf(
+    "[01b] Unknown URL_FILTER_MODE='%s'; falling back to 'candidate'. Valid: candidate, quality_keep",
+    URL_FILTER_MODE
+  ))
+  URL_FILTER_MODE <- "candidate"
+}
+message(sprintf("[01b] URL filter mode: %s | foundations selected: %d", URL_FILTER_MODE, nrow(fdn)))
 
 max_orgs_raw <- str_trim(Sys.getenv("MAX_ORGS", unset = "ALL"))
 MAX_ORGS <- if (max_orgs_raw == "" || str_to_upper(max_orgs_raw) == "ALL") {
