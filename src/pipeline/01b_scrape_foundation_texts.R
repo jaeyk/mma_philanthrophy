@@ -58,6 +58,7 @@ safe_fetch <- function(url) {
   out$final_url <- httr2::resp_url(resp)
   ctype <- httr2::resp_header(resp, "content-type")
   if (is.null(ctype)) ctype <- ""
+  if (is.na(ctype)) ctype <- ""
   ctype <- tolower(ctype)
 
   if (!(grepl("text/html", ctype, fixed = TRUE) || ctype == "")) {
@@ -66,16 +67,16 @@ safe_fetch <- function(url) {
     return(out)
   }
 
-  html_raw <- tryCatch(httr2::resp_body_string(resp), error = function(e) "")
-  if (html_raw == "") {
+  html_raw <- tryCatch(httr2::resp_body_string(resp), error = function(e) NA_character_)
+  if (is.null(html_raw) || is.na(html_raw) || !nzchar(html_raw)) {
     out$error_type <- "empty_body"
     out$error_message <- "No body extracted"
     return(out)
   }
 
   parsed <- tryCatch(extract_text_from_html(html_raw), error = function(e) list(title = "", text = ""))
-  out$title <- parsed$title
-  out$text_clean <- parsed$text
+  out$title <- coalesce(as.character(parsed$title), "")
+  out$text_clean <- coalesce(as.character(parsed$text), "")
   out$ok <- nzchar(out$text_clean)
   if (!out$ok) {
     out$error_type <- "empty_text"
