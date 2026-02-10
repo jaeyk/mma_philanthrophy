@@ -89,9 +89,31 @@ safe_fetch <- function(url) {
 
 collect_candidate_links <- function(seed_url, domain, html_raw = NULL) {
   base_paths <- c("/about", "/about-us", "/mission", "/programs", "/grants", "/what-we-fund")
-  base_urls <- unique(c(seed_url, str_c("https://", domain, base_paths)))
+  base_urls <- unique(c(seed_url, str_c("https://", domain, base_paths), str_c("http://", domain, base_paths)))
   base_urls <- base_urls[!is.na(base_urls) & base_urls != ""]
   unique(base_urls)
+}
+
+build_seed_pool <- function(row) {
+  split_links <- function(x) {
+    if (is.null(x) || is.na(x) || x == "") return(character(0))
+    parts <- unlist(str_split(x, ",", simplify = FALSE))
+    parts <- str_squish(parts)
+    parts[parts != ""]
+  }
+  pool <- c(
+    row$candidate_url,
+    row$preferred_link,
+    row$first_deep_link,
+    row$irs_url,
+    row$first_link,
+    split_links(row$all_deep_links)
+  )
+  pool <- pool[!is.na(pool) & pool != ""]
+  # Deduplicate by normalized URL but keep original first occurrence.
+  if (length(pool) == 0) return(character(0))
+  norm <- normalize_url(pool)
+  pool[!duplicated(norm)]
 }
 
 records <- vector("list", length = 0)
@@ -108,7 +130,20 @@ for (i in seq_len(nrow(fdn))) {
     message(sprintf("[01b] [%d/%d] EIN %s | %s", i, nrow(fdn), ein_i, name_i))
   }
 
-  links <- collect_candidate_links(seed_i, domain_i)
+  row_i <- fdn[i, ]
+  seed_pool <- build_seed_pool(row_i)
+  if (length(seed_pool) == 0) {
+    utils::setTxtProgressBar(pb, i)
+    next
+  }
+
+  seed_pool <- seed_pool[seq_len(min(length(seed_pool), 3))]
+  links <- character(0)
+  for (s in seed_pool) {
+    d <- extract_domain(s)
+    links <- c(links, collect_candidate_links(s, d))
+  }
+  links <- unique(links)
   links <- links[seq_len(min(length(links), MAX_PAGES_PER_SITE))]
 
   for (u in links) {

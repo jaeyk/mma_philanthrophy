@@ -29,7 +29,10 @@ fips <- read_csv(
 
 urls <- read_csv(
   file_urls,
-  col_select = c(ein, taxpayer_name, first_link, irs_url, preferred_link, first_exclude, irs_exclude, url_check),
+  col_select = c(
+    ein, taxpayer_name, first_link, first_deep_link, all_deep_links, found_deep_link,
+    irs_url, preferred_link, first_exclude, deep_exclude, irs_exclude, url_check
+  ),
   show_col_types = FALSE
 )
 
@@ -69,8 +72,17 @@ foundation <- preds %>%
     assets = safe_numeric(asset_amt),
     income = safe_numeric(income_amt),
     revenue = safe_numeric(revenue_amt),
+    # Better seed priority:
+    # 1) validated preferred_link (url_check == t), 2) deep link, 3) IRS URL, 4) first_link.
     candidate_url = case_when(
+      str_to_lower(coalesce(as.character(url_check), "")) == "t" &
+        !is.na(preferred_link) & preferred_link != "" ~ preferred_link,
+      found_deep_link == 1 & deep_exclude == 0 &
+        !is.na(first_deep_link) & first_deep_link != "" ~ first_deep_link,
+      !is.na(irs_url) & irs_url != "" & irs_exclude == 0 ~ irs_url,
+      !is.na(first_link) & first_link != "" & first_exclude == 0 ~ first_link,
       !is.na(preferred_link) & preferred_link != "" ~ preferred_link,
+      !is.na(first_deep_link) & first_deep_link != "" ~ first_deep_link,
       !is.na(irs_url) & irs_url != "" ~ irs_url,
       !is.na(first_link) & first_link != "" ~ first_link,
       TRUE ~ NA_character_
@@ -113,4 +125,3 @@ summary_tbl <- foundation %>%
 
 write_csv(summary_tbl, file.path(path_final, "foundation_universe_summary.csv"))
 message("[01] Done. Wrote: ", file_foundation_universe)
-
