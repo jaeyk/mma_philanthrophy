@@ -44,6 +44,7 @@ draw_progress() {
 STAGES=(
   "src/pipeline/01_build_foundation_universe.R|Scraping/Universe Build"
   "src/pipeline/01b_scrape_foundation_texts.R|Website Text Scraping"
+  "src/pipeline/01c_diagnose_scrape_failures.R|Scrape Failure Diagnostics"
   "src/pipeline/02_classify_focus.R|Core Focus Classification"
   "src/pipeline/02b_score_democracy_state_capacity.R|Democracy/State Capacity Classification"
   "src/pipeline/02c_score_taie_constructs.R|Tech/AI/Innovation/Entrepreneurship Classification"

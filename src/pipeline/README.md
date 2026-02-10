@@ -14,17 +14,21 @@ This pipeline builds a foundation-level analytic dataset and outputs tables/figu
 - Saves per-page text and metadata for reuse across classifiers.
 - Logs URL failures/errors and continues to next URLs/organizations.
 
-3. `02_classify_focus.R`
+3. `01c_diagnose_scrape_failures.R`
+- Draws a random sample of failed domains and probes HTTP/HTTPS variants.
+- Produces diagnostics for improving scraper URL strategy.
+
+4. `02_classify_focus.R`
 - Adds weakly supervised issue/geo/demographic labels from available metadata + scraped web text.
 - Issue focus is derived from `src/pipeline/taxonomies/issue_focus_keywords.csv` (not from prediction score ranks).
 
-4. `02b_score_democracy_state_capacity.R`
+5. `02b_score_democracy_state_capacity.R`
 - Scores two publication-target constructs using keyword taxonomy:
   - `democracy_support`
   - `state_capacity_support`
 - Produces intersection labels (`both`, `democracy_only`, `state_capacity_only`, `neither_or_unclear`).
 
-5. `02c_score_taie_constructs.R`
+6. `02c_score_taie_constructs.R`
 - Scores four additional constructs:
   - `tech_interest`
   - `ai_interest`
@@ -32,11 +36,11 @@ This pipeline builds a foundation-level analytic dataset and outputs tables/figu
   - `entrepreneurship_interest`
 - Produces profile labels by number of supported constructs (`none` to `all_four`).
 
-6. `03_analyze_spatial_financial_inequality.R`
+7. `03_analyze_spatial_financial_inequality.R`
 - Computes inequality and concentration metrics overall and by RUCA/city tier/focus labels.
 - Exports publication-friendly grayscale figures.
 
-7. `run_pipeline.R`
+8. `run_pipeline.R`
 - Runs the three scripts in sequence.
 
 ## Run
@@ -52,6 +56,7 @@ Rscript src/pipeline/run_pipeline.R
 - `processed_data/intermediate/foundation_universe.csv.gz`
 - `processed_data/intermediate/foundation_web_texts.csv.gz`
 - `processed_data/final/foundation_web_text_failures.csv`
+- `processed_data/final/foundation_web_failure_diagnostic_sample.csv`
 - `processed_data/intermediate/foundation_focus_classified.csv.gz`
 - `processed_data/intermediate/foundation_construct_scores.csv.gz`
 - `processed_data/intermediate/foundation_taie_scores.csv.gz`

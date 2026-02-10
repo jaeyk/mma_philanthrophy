@@ -3,6 +3,7 @@ source(file.path("src", "pipeline", "00_config.R"))
 scripts <- c(
   file.path("src", "pipeline", "01_build_foundation_universe.R"),
   file.path("src", "pipeline", "01b_scrape_foundation_texts.R"),
+  file.path("src", "pipeline", "01c_diagnose_scrape_failures.R"),
   file.path("src", "pipeline", "02_classify_focus.R"),
   file.path("src", "pipeline", "02b_score_democracy_state_capacity.R"),
   file.path("src", "pipeline", "02c_score_taie_constructs.R"),

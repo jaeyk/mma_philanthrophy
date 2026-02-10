@@ -94,6 +94,31 @@ collect_candidate_links <- function(seed_url, domain, html_raw = NULL) {
   unique(base_urls)
 }
 
+is_root_url <- function(u) {
+  u2 <- str_replace(u, "^https?://", "")
+  slash_pos <- regexpr("/", u2, fixed = TRUE)[1]
+  if (slash_pos == -1) return(TRUE)
+  path <- substr(u2, slash_pos, nchar(u2))
+  path == "/" || path == ""
+}
+
+probe_domain_reachability <- function(domain) {
+  if (is.na(domain) || domain == "") return(FALSE)
+  probe_urls <- unique(c(
+    str_c("https://", domain, "/"),
+    str_c("http://", domain, "/"),
+    str_c("https://www.", domain, "/"),
+    str_c("http://www.", domain, "/")
+  ))
+  for (pu in probe_urls) {
+    res <- safe_fetch(pu)
+    if (isTRUE(res$ok)) return(TRUE)
+    if (!is.na(res$status_code) && res$status_code >= 200 && res$status_code < 500) return(TRUE)
+    if (identical(res$error_type, "non_html")) return(TRUE)
+  }
+  FALSE
+}
+
 build_seed_pool <- function(row) {
   split_links <- function(x) {
     if (is.null(x) || is.na(x) || x == "") return(character(0))
@@ -145,8 +170,32 @@ for (i in seq_len(nrow(fdn))) {
   }
   links <- unique(links)
   links <- links[seq_len(min(length(links), MAX_PAGES_PER_SITE))]
+  domain_unreachable <- list()
+  domain_reachability_checked <- list()
 
   for (u in links) {
+    u_domain <- extract_domain(u)
+    if (!is.na(u_domain) && !is.null(domain_unreachable[[u_domain]]) &&
+        isTRUE(domain_unreachable[[u_domain]]) && !is_root_url(u)) {
+      if (SCRAPER_VERBOSE == 1) {
+        message(sprintf("  -> URL: %s [skipped: domain_unreachable]", u))
+      }
+      records[[length(records) + 1]] <- tibble(
+        ein = ein_i,
+        source_url = u,
+        final_url = u,
+        status_code = NA_integer_,
+        title = "",
+        text_clean = "",
+        scraped_ok = FALSE,
+        error_type = "domain_unreachable_skip",
+        error_message = "Skipped because root URL for domain failed with request_error",
+        attempts = 0L,
+        scraped_at = as.character(Sys.time())
+      )
+      next
+    }
+
     if (SCRAPER_VERBOSE == 1) {
       message(sprintf("  -> URL: %s", u))
     }
@@ -159,6 +208,14 @@ for (i in seq_len(nrow(fdn))) {
         message(sprintf("     retry %d/%d (error_type=%s)", attempt, MAX_RETRIES, fetched$error_type))
       }
       if (isTRUE(fetched$ok)) break
+    }
+
+    if (!is.na(u_domain) && is_root_url(u) && !isTRUE(fetched$ok) &&
+        identical(fetched$error_type, "request_error")) {
+      if (is.null(domain_reachability_checked[[u_domain]])) {
+        domain_reachability_checked[[u_domain]] <- TRUE
+        domain_unreachable[[u_domain]] <- !probe_domain_reachability(u_domain)
+      }
     }
 
     records[[length(records) + 1]] <- tibble(
