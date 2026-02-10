@@ -261,6 +261,7 @@ for (i in seq_len(nrow(fdn))) {
 
     records[[length(records) + 1]] <- tibble(
       ein = ein_i,
+      foundation_name = name_i,
       source_url = u,
       final_url = fetched$final_url,
       status_code = fetched$status_code,
@@ -272,6 +273,10 @@ for (i in seq_len(nrow(fdn))) {
       attempts = fetched$attempts,
       scraped_at = as.character(Sys.time())
     )
+
+    if (SCRAPER_VERBOSE == 1 && isTRUE(fetched$ok)) {
+      message(sprintf("     success: %s (chars=%d)", fetched$final_url, nchar(coalesce(fetched$text_clean, ""))))
+    }
   }
 
   utils::setTxtProgressBar(pb, i)
@@ -281,7 +286,8 @@ close(pb)
 web_texts <- bind_rows(records) %>%
   mutate(
     text_clean = str_squish(coalesce(text_clean, "")),
-    final_domain = extract_domain(final_url)
+    final_domain = extract_domain(final_url),
+    text_chars = nchar(text_clean)
   )
 
 write_csv(web_texts, file_web_texts)
@@ -290,6 +296,22 @@ failures <- web_texts %>%
   filter(!scraped_ok) %>%
   select(ein, source_url, final_url, status_code, error_type, error_message, attempts, scraped_at)
 write_csv(failures, file_web_text_failures)
+
+scrape_audit <- web_texts %>%
+  group_by(ein, foundation_name) %>%
+  summarize(
+    urls_attempted = n(),
+    urls_succeeded = sum(scraped_ok, na.rm = TRUE),
+    any_success = urls_succeeded > 0,
+    best_final_url = if_else(any_success, final_url[which.max(text_chars * as.integer(scraped_ok))], NA_character_),
+    best_text_chars = if_else(any_success, max(text_chars[scraped_ok], na.rm = TRUE), NA_integer_),
+    top_error_type = {
+      err <- names(sort(table(error_type[!scraped_ok]), decreasing = TRUE))
+      if (length(err) == 0) NA_character_ else err[1]
+    },
+    .groups = "drop"
+  )
+write_csv(scrape_audit, file_web_scrape_audit)
 
 summary_tbl <- web_texts %>%
   summarize(

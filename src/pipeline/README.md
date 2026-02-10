@@ -59,6 +59,7 @@ Rscript src/pipeline/run_pipeline.R
 - `processed_data/intermediate/foundation_universe.csv.gz`
 - `processed_data/intermediate/foundation_web_texts.csv.gz`
 - `processed_data/final/foundation_web_text_failures.csv`
+- `processed_data/final/foundation_web_scrape_audit.csv`
 - `processed_data/final/foundation_web_failure_diagnostic_sample.csv`
 - `processed_data/final/foundation_web_failure_domain_recommendations.csv`
 - `processed_data/intermediate/foundation_focus_classified.csv.gz`

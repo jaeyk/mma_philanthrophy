@@ -50,3 +50,4 @@ file_web_texts_summary <- file.path(path_final, "foundation_web_texts_summary.cs
 file_web_text_failures <- file.path(path_final, "foundation_web_text_failures.csv")
 file_web_failure_diagnostic_sample <- file.path(path_final, "foundation_web_failure_diagnostic_sample.csv")
 file_web_failure_domain_recommendations <- file.path(path_final, "foundation_web_failure_domain_recommendations.csv")
+file_web_scrape_audit <- file.path(path_final, "foundation_web_scrape_audit.csv")
