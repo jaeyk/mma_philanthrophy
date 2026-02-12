@@ -108,7 +108,16 @@ foundation <- preds %>%
   ) %>%
   left_join(url_web_norm %>% mutate(has_web_features = TRUE), by = "url_norm") %>%
   mutate(has_web_features = coalesce(has_web_features, FALSE)) %>%
-  left_join(ruca, by = "zip5")
+  left_join(ruca, by = "zip5") %>%
+  mutate(
+    # Coarse city-size proxy derived from RUCA classes.
+    city_size_tier = case_when(
+      ruca_category == "Metropolitan" ~ "large_metro",
+      ruca_category == "Micropolitan" ~ "mid_small_metro",
+      ruca_category %in% c("Small town", "Rural") ~ "small_town_or_rural",
+      TRUE ~ NA_character_
+    )
+  )
 
 write_csv(foundation, file_foundation_universe)
 

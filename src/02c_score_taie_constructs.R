@@ -7,7 +7,11 @@ if (!file.exists(file_taie_taxonomy)) {
   stop("Missing taxonomy file: ", file_taie_taxonomy)
 }
 
-fdn <- read_csv(file_foundation_universe, show_col_types = FALSE)
+fdn <- read_csv(file_foundation_universe, show_col_types = FALSE) %>%
+  distinct(ein, .keep_all = TRUE)
+if (!"city_size_tier" %in% names(fdn)) {
+  fdn$city_size_tier <- NA_character_
+}
 taxonomy <- read_csv(file_taie_taxonomy, show_col_types = FALSE) %>%
   mutate(
     construct = str_to_lower(construct),
@@ -38,6 +42,24 @@ construct_scores <- matched %>%
     values_from = c(score, n_matches, matched_patterns, matched_subdimensions),
     values_fill = list(score = 0, n_matches = 0, matched_patterns = "", matched_subdimensions = "")
   )
+
+required_cols <- c(
+  "score_tech", "score_ai", "score_innovation", "score_entrepreneurship",
+  "n_matches_tech", "n_matches_ai", "n_matches_innovation", "n_matches_entrepreneurship",
+  "matched_patterns_tech", "matched_patterns_ai", "matched_patterns_innovation", "matched_patterns_entrepreneurship",
+  "matched_subdimensions_tech", "matched_subdimensions_ai", "matched_subdimensions_innovation", "matched_subdimensions_entrepreneurship"
+)
+for (col in required_cols) {
+  if (!col %in% names(construct_scores)) {
+    if (str_starts(col, "score_")) {
+      construct_scores[[col]] <- 0
+    } else if (str_starts(col, "n_matches_")) {
+      construct_scores[[col]] <- 0L
+    } else {
+      construct_scores[[col]] <- ""
+    }
+  }
+}
 
 scores_out <- fdn %>%
   select(ein, ruca_category, city_size_tier, assets, income, revenue) %>%

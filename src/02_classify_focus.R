@@ -3,7 +3,8 @@ source(file.path("src", "utils.R"))
 
 message("[02] Classifying issue/geographic/demographic focus...")
 
-fdn <- read_csv(file_foundation_universe, show_col_types = FALSE)
+fdn <- read_csv(file_foundation_universe, show_col_types = FALSE) %>%
+  distinct(ein, .keep_all = TRUE)
 if (!file.exists(file_issue_taxonomy)) {
   stop("Missing issue taxonomy file: ", file_issue_taxonomy)
 }
