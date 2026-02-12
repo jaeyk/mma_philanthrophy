@@ -9,6 +9,7 @@ mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/pipeline_$(date +%Y%m%d_%H%M%S).log"
 STATE_FILE="${LOG_DIR}/pipeline_state.env"
 COMPLETED_FILE="${LOG_DIR}/pipeline_completed_stages.txt"
+USER_TAG="$(id -un 2>/dev/null || echo user)"
 
 VERBOSE="${VERBOSE:-1}"
 if [[ "${VERBOSE}" == "1" ]]; then
@@ -38,6 +39,44 @@ RESUME="${RESUME:-1}"
 RESET_STATE="${RESET_STATE:-0}"
 FORCE_START_INDEX="${FORCE_START_INDEX:-}"
 AUTO_RESTART_ON_COMPLETED="${AUTO_RESTART_ON_COMPLETED:-1}"
+
+build_user_scoped_path() {
+  local path="$1"
+  local dir base stem ext
+  dir="$(dirname "$path")"
+  base="$(basename "$path")"
+  if [[ "$base" == *.* ]]; then
+    stem="${base%.*}"
+    ext="${base##*.}"
+    printf "%s/%s_%s.%s" "$dir" "$stem" "$USER_TAG" "$ext"
+  else
+    printf "%s/%s_%s" "$dir" "$base" "$USER_TAG"
+  fi
+}
+
+ensure_writable_path() {
+  local path="$1"
+  local label="$2"
+
+  if : >> "$path" 2>/dev/null; then
+    printf "%s" "$path"
+    return 0
+  fi
+
+  local alt_path
+  alt_path="$(build_user_scoped_path "$path")"
+  if : >> "$alt_path" 2>/dev/null; then
+    echo "Warning: ${label} is not writable at ${path}; using ${alt_path} instead." >&2
+    printf "%s" "$alt_path"
+    return 0
+  fi
+
+  echo "Error: cannot write ${label} at ${path} or fallback ${alt_path}" >&2
+  exit 1
+}
+
+STATE_FILE="$(ensure_writable_path "${STATE_FILE}" "state file")"
+COMPLETED_FILE="$(ensure_writable_path "${COMPLETED_FILE}" "completed-stages file")"
 
 draw_progress() {
   local current="$1"

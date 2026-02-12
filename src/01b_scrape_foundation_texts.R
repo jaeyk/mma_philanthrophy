@@ -667,11 +667,23 @@ if (nrow(fdn) == 0) {
         library(xml2)
         NULL
       })
+      worker_exports <- c(
+        "fdn", "skip_domains", "prefer_domains",
+        "process_foundation_row", "build_seed_pool", "collect_candidate_links",
+        "order_links_by_protocol", "extract_domain", "normalize_url",
+        "probe_domain_reachability", "is_root_url", "safe_fetch",
+        "safe_browser_fetch", "should_try_browser_fallback",
+        "extract_text_from_html", "is_likely_js_rendered", "%||%",
+        "domain_reco",
+        "MAX_PAGES_PER_SITE", "REQUEST_TIMEOUT", "CRAWL_DELAY", "MAX_RETRIES",
+        "SCRAPER_VERBOSE", "MIN_TEXT_CHARS_STRONG_SUCCESS", "CONTINUE_IF_THIN_SUCCESS",
+        "BROWSER_FALLBACK_ENABLED", "BROWSER_FALLBACK_TIMEOUT_SECONDS",
+        "BROWSER_FALLBACK_WAIT_MS", "BROWSER_FALLBACK_MIN_TEXT_CHARS",
+        "BROWSER_FALLBACK_SCRIPT", "browser_fallback_available"
+      )
       parallel::clusterExport(
         cl,
-        varlist = c(
-          "fdn", "skip_domains", "prefer_domains", "process_foundation_row"
-        ),
+        varlist = worker_exports,
         envir = environment()
       )
 
@@ -762,6 +774,16 @@ if (nrow(fdn) == 0) {
         final_domain = extract_domain(final_url),
         text_chars = nchar(text_clean)
       )
+  }
+}
+
+if (nrow(web_texts) > 0) {
+  worker_error_rate <- mean(web_texts$error_type == "worker_error", na.rm = TRUE)
+  if (is.finite(worker_error_rate) && worker_error_rate >= 0.95) {
+    stop(sprintf(
+      "[01b] Aborting: %.1f%% of rows are worker_error. Parallel worker initialization is likely broken.",
+      100 * worker_error_rate
+    ))
   }
 }
 
