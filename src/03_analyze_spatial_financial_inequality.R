@@ -10,22 +10,49 @@ fdn_base <- read_csv(file_focus_classified, show_col_types = FALSE) %>%
     revenue = safe_numeric(revenue)
   )
 
+if (!"ruca_category" %in% names(fdn_base)) {
+  fdn_base$ruca_category <- NA_character_
+}
+if (!"city_size_tier" %in% names(fdn_base)) {
+  fdn_base$city_size_tier <- case_when(
+    fdn_base$ruca_category == "Metropolitan" ~ "large_metro",
+    fdn_base$ruca_category == "Micropolitan" ~ "mid_small_metro",
+    fdn_base$ruca_category %in% c("Small town", "Rural") ~ "small_town_or_rural",
+    TRUE ~ NA_character_
+  )
+}
+
 fdn <- if (file.exists(file_construct_scores)) {
-  construct_scores <- read_csv(file_construct_scores, show_col_types = FALSE) %>%
-    select(ein, democracy_support_flag, state_capacity_support_flag, support_intersection,
-           score_democracy, score_state_capacity, democracy_support_conf, state_capacity_support_conf)
-  fdn_base %>% left_join(construct_scores, by = "ein")
+  construct_scores <- read_csv(
+    file_construct_scores,
+    col_select = any_of(c(
+      "ein", "ruca_category", "city_size_tier",
+      "democracy_support_flag", "state_capacity_support_flag", "support_intersection",
+      "score_democracy", "score_state_capacity", "democracy_support_conf", "state_capacity_support_conf"
+    )),
+    show_col_types = FALSE
+  )
+  fdn_base %>%
+    left_join(construct_scores, by = "ein", suffix = c("", ".construct")) %>%
+    mutate(
+      ruca_category = coalesce(ruca_category, ruca_category.construct),
+      city_size_tier = coalesce(city_size_tier, city_size_tier.construct)
+    ) %>%
+    select(-any_of(c("ruca_category.construct", "city_size_tier.construct")))
 } else {
   fdn_base
 }
 
 if (file.exists(file_taie_scores)) {
-  taie_scores <- read_csv(file_taie_scores, show_col_types = FALSE) %>%
-    select(
+  taie_scores <- read_csv(
+    file_taie_scores,
+    col_select = c(
       ein, tech_interest_flag, ai_interest_flag, innovation_interest_flag,
       entrepreneurship_interest_flag, taie_count, taie_profile,
       score_tech, score_ai, score_innovation, score_entrepreneurship
-    )
+    ),
+    show_col_types = FALSE
+  )
   fdn <- fdn %>% left_join(taie_scores, by = "ein")
 }
 

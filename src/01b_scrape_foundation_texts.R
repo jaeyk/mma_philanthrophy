@@ -15,6 +15,11 @@ if (file.exists(file_web_failure_domain_recommendations)) {
     transmute(domain = str_to_lower(domain), recommendation = str_to_lower(recommendation))
 }
 
+USE_DIAGNOSTIC_DOMAIN_FILTERS <- as.integer(Sys.getenv("USE_DIAGNOSTIC_DOMAIN_FILTERS", unset = "0"))
+if (is.na(USE_DIAGNOSTIC_DOMAIN_FILTERS)) {
+  USE_DIAGNOSTIC_DOMAIN_FILTERS <- 0L
+}
+
 fdn <- read_csv(file_foundation_universe, show_col_types = FALSE) %>%
   filter(!is.na(candidate_url), candidate_url != "") %>%
   mutate(
@@ -535,8 +540,18 @@ process_foundation_row <- function(row_i, idx, n_total, skip_domains, prefer_dom
   out_records
 }
 
-skip_domains <- domain_reco %>% filter(recommendation == "skip_domain") %>% pull(domain) %>% unique()
-prefer_domains <- domain_reco %>% filter(recommendation == "prefer_https") %>% pull(domain) %>% unique()
+if (USE_DIAGNOSTIC_DOMAIN_FILTERS == 1L) {
+  skip_domains <- domain_reco %>% filter(recommendation == "skip_domain") %>% pull(domain) %>% unique()
+  prefer_domains <- domain_reco %>% filter(recommendation == "prefer_https") %>% pull(domain) %>% unique()
+  message(sprintf(
+    "[01b] Domain diagnostics filters enabled: %d skip_domain, %d prefer_https recommendations loaded.",
+    length(skip_domains), length(prefer_domains)
+  ))
+} else {
+  skip_domains <- character(0)
+  prefer_domains <- character(0)
+  message("[01b] Domain diagnostics filters disabled (USE_DIAGNOSTIC_DOMAIN_FILTERS=0).")
+}
 
 if (SCRAPER_WORKERS > 1 && .Platform$OS.type == "windows") {
   warning("[01b] SCRAPER_WORKERS > 1 requested on Windows; falling back to sequential mode")
