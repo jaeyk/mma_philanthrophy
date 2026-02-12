@@ -62,6 +62,12 @@ npx playwright install chromium
 Rscript src/run_pipeline.R
 ```
 
+### Full pipeline via shell wrapper (with scraper workers)
+
+```bash
+SCRAPER_WORKERS=6 BROWSER_FALLBACK_ENABLED=1 ./run_pipeline_and_shutdown.sh
+```
+
 ### Scraper only
 
 ```bash
@@ -72,6 +78,12 @@ Rscript src/01b_scrape_foundation_texts.R
 
 ```bash
 SCRAPER_WORKERS=6 BROWSER_FALLBACK_ENABLED=1 Rscript src/01b_scrape_foundation_texts.R
+```
+
+### Resume an interrupted scraper run
+
+```bash
+SCRAPER_RESUME=1 SCRAPER_WORKERS=6 Rscript src/01b_scrape_foundation_texts.R
 ```
 
 ## Pipeline Stages
@@ -162,6 +174,9 @@ Core controls:
 - `CONTINUE_IF_THIN_SUCCESS` (default `1`): continue probing when first success is short.
 - `SCRAPER_VERBOSE` (default `1`): verbose URL-level logs.
 - `SCRAPER_WORKERS` (default `1`): parallel workers target.
+- `SCRAPER_RESUME` (default `1`): resume from checkpointed rows if present.
+- `SCRAPER_CHECKPOINT_EVERY` (default `100`): checkpoint frequency in foundations.
+- `SCRAPER_CHECKPOINT_FILE` (default `processed_data/intermediate/foundation_web_texts_checkpoint.csv`): checkpoint file path.
 
 Browser fallback controls:
 
@@ -212,3 +227,7 @@ Rscript src/01b_scrape_foundation_texts.R
 
 4. Missing taxonomy or input file errors.
 - Confirm all required files exist in `raw_data/` and `src/` with exact names.
+
+5. Scraper interrupted mid-run.
+- Re-run with `SCRAPER_RESUME=1` (default).
+- The scraper continues from `processed_data/intermediate/foundation_web_texts_checkpoint.csv`.

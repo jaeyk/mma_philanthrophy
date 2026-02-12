@@ -50,6 +50,12 @@ SCRAPER_VERBOSE <- as.integer(Sys.getenv("SCRAPER_VERBOSE", unset = "1"))
 MIN_TEXT_CHARS_STRONG_SUCCESS <- as.integer(Sys.getenv("MIN_TEXT_CHARS_STRONG_SUCCESS", unset = "600"))
 CONTINUE_IF_THIN_SUCCESS <- as.integer(Sys.getenv("CONTINUE_IF_THIN_SUCCESS", unset = "1"))
 SCRAPER_WORKERS <- as.integer(Sys.getenv("SCRAPER_WORKERS", unset = "1"))
+SCRAPER_RESUME <- as.integer(Sys.getenv("SCRAPER_RESUME", unset = "1"))
+SCRAPER_CHECKPOINT_EVERY <- as.integer(Sys.getenv("SCRAPER_CHECKPOINT_EVERY", unset = "100"))
+SCRAPER_CHECKPOINT_FILE <- Sys.getenv(
+  "SCRAPER_CHECKPOINT_FILE",
+  unset = file.path(path_intermediate, "foundation_web_texts_checkpoint.csv")
+)
 
 BROWSER_FALLBACK_ENABLED <- as.integer(Sys.getenv("BROWSER_FALLBACK_ENABLED", unset = "0"))
 BROWSER_FALLBACK_TIMEOUT_SECONDS <- as.integer(Sys.getenv("BROWSER_FALLBACK_TIMEOUT_SECONDS", unset = "25"))
@@ -59,6 +65,80 @@ BROWSER_FALLBACK_SCRIPT <- Sys.getenv("BROWSER_FALLBACK_SCRIPT", unset = file.pa
 
 if (is.finite(MAX_ORGS) && !is.na(MAX_ORGS) && MAX_ORGS > 0 && nrow(fdn) > MAX_ORGS) {
   fdn <- fdn %>% slice_head(n = MAX_ORGS)
+}
+
+if (is.na(SCRAPER_CHECKPOINT_EVERY) || SCRAPER_CHECKPOINT_EVERY < 1) {
+  SCRAPER_CHECKPOINT_EVERY <- 100L
+}
+
+normalize_web_rows <- function(df) {
+  if (is.null(df) || nrow(df) == 0) {
+    return(tibble(
+      ein = character(),
+      foundation_name = character(),
+      source_url = character(),
+      final_url = character(),
+      status_code = integer(),
+      title = character(),
+      text_clean = character(),
+      scraped_ok = logical(),
+      error_type = character(),
+      error_message = character(),
+      attempts = integer(),
+      browser_fallback_used = logical(),
+      scraped_at = character()
+    ))
+  }
+
+  if (!"foundation_name" %in% names(df)) df$foundation_name <- NA_character_
+  if (!"source_url" %in% names(df)) df$source_url <- NA_character_
+  if (!"final_url" %in% names(df)) df$final_url <- NA_character_
+  if (!"status_code" %in% names(df)) df$status_code <- NA_integer_
+  if (!"title" %in% names(df)) df$title <- ""
+  if (!"text_clean" %in% names(df)) df$text_clean <- ""
+  if (!"scraped_ok" %in% names(df)) df$scraped_ok <- FALSE
+  if (!"error_type" %in% names(df)) df$error_type <- ""
+  if (!"error_message" %in% names(df)) df$error_message <- ""
+  if (!"attempts" %in% names(df)) df$attempts <- NA_integer_
+  if (!"browser_fallback_used" %in% names(df)) df$browser_fallback_used <- FALSE
+  if (!"scraped_at" %in% names(df)) df$scraped_at <- NA_character_
+
+  df %>%
+    transmute(
+      ein = as.character(ein),
+      foundation_name = as.character(foundation_name),
+      source_url = as.character(source_url),
+      final_url = as.character(final_url),
+      status_code = suppressWarnings(as.integer(status_code)),
+      title = as.character(title),
+      text_clean = as.character(text_clean),
+      scraped_ok = as.logical(scraped_ok),
+      error_type = as.character(error_type),
+      error_message = as.character(error_message),
+      attempts = suppressWarnings(as.integer(attempts)),
+      browser_fallback_used = as.logical(browser_fallback_used),
+      scraped_at = as.character(scraped_at)
+    )
+}
+
+existing_records <- tibble()
+if (SCRAPER_RESUME != 1 && file.exists(SCRAPER_CHECKPOINT_FILE)) {
+  unlink(SCRAPER_CHECKPOINT_FILE)
+}
+
+if (SCRAPER_RESUME == 1 && file.exists(SCRAPER_CHECKPOINT_FILE)) {
+  existing_records <- read_csv(SCRAPER_CHECKPOINT_FILE, show_col_types = FALSE) %>%
+    normalize_web_rows()
+  completed_eins <- existing_records %>% distinct(ein) %>% pull(ein)
+  if (length(completed_eins) > 0) {
+    before_n <- nrow(fdn)
+    fdn <- fdn %>% filter(!ein %in% completed_eins)
+    resumed_n <- before_n - nrow(fdn)
+    message(sprintf(
+      "[01b] Resume enabled: loaded %d checkpoint rows (%d EINs already processed).",
+      nrow(existing_records), resumed_n
+    ))
+  }
 }
 
 extract_text_from_html <- function(html_raw) {
@@ -283,6 +363,16 @@ format_hms <- function(seconds) {
   sprintf("%02d:%02d:%02d", h, m, sec)
 }
 
+write_checkpoint_rows <- function(rows_df) {
+  if (is.null(rows_df) || nrow(rows_df) == 0) return(invisible(NULL))
+  readr::write_csv(
+    normalize_web_rows(rows_df),
+    SCRAPER_CHECKPOINT_FILE,
+    append = file.exists(SCRAPER_CHECKPOINT_FILE)
+  )
+  invisible(NULL)
+}
+
 process_foundation_row <- function(row_i, idx, n_total, skip_domains, prefer_domains) {
   ein_i <- row_i$ein
   seed_i <- row_i$seed_url
@@ -456,23 +546,33 @@ if (SCRAPER_WORKERS > 1 && .Platform$OS.type == "windows") {
 if (!is.na(SCRAPER_WORKERS) && SCRAPER_WORKERS < 1) SCRAPER_WORKERS <- 1L
 
 if (nrow(fdn) == 0) {
-  web_texts <- tibble(
-    ein = character(),
-    foundation_name = character(),
-    source_url = character(),
-    final_url = character(),
-    status_code = integer(),
-    title = character(),
-    text_clean = character(),
-    scraped_ok = logical(),
-    error_type = character(),
-    error_message = character(),
-    attempts = integer(),
-    browser_fallback_used = logical(),
-    scraped_at = character(),
-    final_domain = character(),
-    text_chars = integer()
-  )
+  if (nrow(existing_records) > 0) {
+    web_texts <- existing_records %>%
+      mutate(
+        text_clean = str_squish(coalesce(text_clean, "")),
+        final_domain = extract_domain(final_url),
+        text_chars = nchar(text_clean)
+      )
+    message("[01b] No remaining foundations to scrape. Using checkpointed results.")
+  } else {
+    web_texts <- tibble(
+      ein = character(),
+      foundation_name = character(),
+      source_url = character(),
+      final_url = character(),
+      status_code = integer(),
+      title = character(),
+      text_clean = character(),
+      scraped_ok = logical(),
+      error_type = character(),
+      error_message = character(),
+      attempts = integer(),
+      browser_fallback_used = logical(),
+      scraped_at = character(),
+      final_domain = character(),
+      text_chars = integer()
+    )
+  }
 } else {
   idx <- seq_len(nrow(fdn))
   n_workers_effective <- min(SCRAPER_WORKERS, nrow(fdn))
@@ -511,6 +611,8 @@ if (nrow(fdn) == 0) {
 
   if (n_workers_effective > 1) {
     nested_records <- vector("list", progress_total)
+    foundation_since_checkpoint <- 0L
+    checkpoint_buffer <- list()
     cl <- tryCatch(
       parallel::makeCluster(n_workers_effective, type = "PSOCK"),
       error = function(e) e
@@ -522,9 +624,20 @@ if (nrow(fdn) == 0) {
         conditionMessage(cl)
       ))
       for (i in idx) {
-        nested_records[[i]] <- process_foundation_row(fdn[i, ], i, nrow(fdn), skip_domains, prefer_domains)
+        rec_i <- process_foundation_row(fdn[i, ], i, nrow(fdn), skip_domains, prefer_domains)
+        nested_records[[i]] <- rec_i
+        checkpoint_buffer[[length(checkpoint_buffer) + 1]] <- bind_rows(rec_i)
+        foundation_since_checkpoint <- foundation_since_checkpoint + 1L
+        if (foundation_since_checkpoint >= SCRAPER_CHECKPOINT_EVERY) {
+          write_checkpoint_rows(bind_rows(checkpoint_buffer))
+          checkpoint_buffer <- list()
+          foundation_since_checkpoint <- 0L
+        }
         progress_done <- progress_done + 1L
         update_progress(progress_done, force_log = FALSE)
+      }
+      if (length(checkpoint_buffer) > 0) {
+        write_checkpoint_rows(bind_rows(checkpoint_buffer))
       }
     } else {
       on.exit(parallel::stopCluster(cl), add = TRUE)
@@ -578,21 +691,38 @@ if (nrow(fdn) == 0) {
           progress_done <- progress_done + 1L
           update_progress(progress_done, force_log = FALSE)
         }
+        write_checkpoint_rows(bind_rows(unlist(batch_res, recursive = FALSE)))
       }
     }
   } else {
     nested_records <- vector("list", progress_total)
+    foundation_since_checkpoint <- 0L
+    checkpoint_buffer <- list()
     for (i in idx) {
-      nested_records[[i]] <- process_foundation_row(fdn[i, ], i, nrow(fdn), skip_domains, prefer_domains)
+      rec_i <- process_foundation_row(fdn[i, ], i, nrow(fdn), skip_domains, prefer_domains)
+      nested_records[[i]] <- rec_i
+      checkpoint_buffer[[length(checkpoint_buffer) + 1]] <- bind_rows(rec_i)
+      foundation_since_checkpoint <- foundation_since_checkpoint + 1L
+      if (foundation_since_checkpoint >= SCRAPER_CHECKPOINT_EVERY) {
+        write_checkpoint_rows(bind_rows(checkpoint_buffer))
+        checkpoint_buffer <- list()
+        foundation_since_checkpoint <- 0L
+      }
       progress_done <- progress_done + 1L
       update_progress(progress_done, force_log = FALSE)
+    }
+    if (length(checkpoint_buffer) > 0) {
+      write_checkpoint_rows(bind_rows(checkpoint_buffer))
     }
   }
   close(pb)
   update_progress(progress_done, force_log = TRUE)
 
   records <- unlist(nested_records, recursive = FALSE)
-  if (length(records) == 0) {
+  new_rows_df <- if (length(records) == 0) tibble() else bind_rows(records)
+  new_rows_df <- normalize_web_rows(new_rows_df)
+  combined_rows <- if (nrow(existing_records) > 0) bind_rows(existing_records, new_rows_df) else new_rows_df
+  if (nrow(combined_rows) == 0) {
     web_texts <- tibble(
       ein = character(),
       foundation_name = character(),
@@ -611,7 +741,7 @@ if (nrow(fdn) == 0) {
       text_chars = integer()
     )
   } else {
-    web_texts <- bind_rows(records) %>%
+    web_texts <- combined_rows %>%
       mutate(
         text_clean = str_squish(coalesce(text_clean, "")),
         final_domain = extract_domain(final_url),
@@ -621,6 +751,9 @@ if (nrow(fdn) == 0) {
 }
 
 write_csv(web_texts, file_web_texts)
+if (file.exists(SCRAPER_CHECKPOINT_FILE)) {
+  unlink(SCRAPER_CHECKPOINT_FILE)
+}
 
 failures <- web_texts %>%
   filter(!scraped_ok) %>%
